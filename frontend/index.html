@@ -60,6 +60,10 @@
   </div>
 
   <div class="action-area">
+    <div id="userBar" style="margin-bottom:18px;font-size:13px;color:var(--t2)">
+      <span id="userGreeting"></span>
+      <span id="userActions"></span>
+    </div>
     <button class="btn btn-p btn-lg" onclick="location.href='step1.html'">开始建模 →</button>
     <p style="margin-top:10px;font-size:12px;color:var(--t3)">或点击上方卡片直接跳转到任意步骤</p>
   </div>
@@ -68,6 +72,35 @@
 <div id="toast" class="toast"></div>
 
 <script>
+const API = '/api';
+
+// 检查登录状态并更新 UI
+(async () => {
+  const bar = document.getElementById('userGreeting');
+  const actions = document.getElementById('userActions');
+  try {
+    const resp = await fetch(`${API}/auth/me`);
+    const data = await resp.json();
+    if (data.user) {
+      localStorage.setItem('lm_user', JSON.stringify(data.user));
+      bar.innerHTML = `👤 ${data.user.display_name}（${data.user.email}）`;
+      actions.innerHTML = `<button class="btn btn-g btn-sm" onclick="logout()">退出登录</button>`;
+    } else {
+      localStorage.removeItem('lm_user');
+      bar.innerHTML = '未登录';
+      actions.innerHTML = `<a href="login.html" class="btn btn-o btn-sm">登录 / 注册</a>`;
+    }
+  } catch(e) {
+    bar.textContent = '';
+  }
+})();
+
+async function logout() {
+  await fetch(`${API}/auth/logout`, { method: 'POST' });
+  localStorage.removeItem('lm_user');
+  window.location.reload();
+}
+
 function showToast(msg, err) {
   const t = document.getElementById('toast');
   t.textContent = msg;

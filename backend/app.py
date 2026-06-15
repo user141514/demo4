@@ -1,6 +1,6 @@
 """
 Flask App — 领导力建模智能体
-静态文件服务 + DeepSeek API 代理 + DOCX/PDF 导出
+静态文件服务 + DeepSeek API 代理 + DOCX导出 + 用户认证
 """
 import json
 import os
@@ -19,12 +19,28 @@ from backend.ai_service import (
     regenerate_item,
     LLMError,
 )
+from backend.auth_db import init_auth_db
+from backend.auth_service import AuthError, login_user, register_user
+from backend.auth_middleware import (
+    clear_session_cookie,
+    current_user,
+    load_current_user,
+    logout_session,
+    require_auth,
+    set_session_cookie,
+)
 
 app = Flask(__name__, static_folder=None)
 CORS(app)
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
+
+# 初始化认证数据库
+init_auth_db()
+
+# before_request: 加载用户
+app.before_request(load_current_user)
 
 
 # ── Static Files ──────────────────────────────────────────────
@@ -53,6 +69,49 @@ def health():
         "model": settings.get("openai_chat_model", ""),
         "key_configured": bool(settings.get("openai_api_key")),
     })
+
+
+# ── Auth Routes（借鉴 demo2 blueprints/auth.py） ──────────────
+
+@app.route("/api/auth/register", methods=["POST"])
+def api_register():
+    data = request.get_json() or {}
+    try:
+        user, token = register_user(
+            data.get("email", ""),
+            data.get("display_name", ""),
+            data.get("password", ""),
+        )
+        resp = jsonify({"user": user})
+        return set_session_cookie(resp, token)
+    except AuthError as e:
+        return jsonify({"error": e.code, "message": e.message}), e.status_code
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_login():
+    data = request.get_json() or {}
+    try:
+        user, token = login_user(data.get("email", ""), data.get("password", ""))
+        resp = jsonify({"user": user})
+        return set_session_cookie(resp, token)
+    except AuthError as e:
+        return jsonify({"error": e.code, "message": e.message}), e.status_code
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_logout():
+    logout_session()
+    resp = jsonify({"ok": True})
+    return clear_session_cookie(resp)
+
+
+@app.route("/api/auth/me", methods=["GET"])
+def api_me():
+    user = current_user()
+    if user is None:
+        return jsonify({"user": None})
+    return jsonify({"user": user})
 
 
 # ── Step1: Chat + Documents ───────────────────────────────────
