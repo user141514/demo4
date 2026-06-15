@@ -108,15 +108,30 @@ async function init() {
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
 
-    const jsonStr = data.result.replace(/```json\n?|```/g, '').trim();
-    const parsed = JSON.parse(jsonStr);
-    anchors = (parsed.anchors || []).map(a => ({
-      id: a.dimension_id,
-      nm: a.dimension_name,
-      ex: a.excellent || [],
-      st: a.standard || [],
-      bl: a.below || []
-    }));
+    const items = data.result; // 新API直接返回list
+    if (Array.isArray(items)) {
+      anchors = items.map(a => {
+        const anc = a.anchors || {};
+        return {
+          id: a.dimension_id,
+          nm: a.dimension_name,
+          ex: (anc.excellent || []).map(x => typeof x === 'string' ? x : x.text),
+          st: (anc.standard || []).map(x => typeof x === 'string' ? x : x.text),
+          bl: (anc.below || []).map(x => typeof x === 'string' ? x : x.text)
+        };
+      });
+    } else {
+      // 兼容旧格式 (JSON字符串)
+      const jsonStr = (items || '').replace(/```json\n?|```/g, '').trim();
+      const parsed = JSON.parse(jsonStr);
+      anchors = (parsed.anchors || []).map(a => ({
+        id: a.dimension_id,
+        nm: a.dimension_name,
+        ex: a.excellent || [],
+        st: a.standard || [],
+        bl: a.below || []
+      }));
+    }
     if (anchors.length === 0) anchors = MOCK_ANCHORS;
   } catch (err) {
     console.error('AI generation failed, using mock:', err);

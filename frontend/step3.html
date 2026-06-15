@@ -100,14 +100,25 @@ async function init() {
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
 
-    const jsonStr = data.result.replace(/```json\n?|```/g, '').trim();
-    const parsed = JSON.parse(jsonStr);
-    descs = (parsed.descriptions || []).map(d => ({
-      id: d.dimension_id,
-      nm: d.dimension_name,
-      desc: d.description,
-      qc: { ok: d.qc_pass !== false, issues: d.qc_issues || [] }
-    }));
+    const items = data.result; // 新API直接返回list
+    if (Array.isArray(items)) {
+      descs = items.map(d => ({
+        id: d.dimension_id,
+        nm: d.dimension_name,
+        desc: d.description,
+        qc: { ok: d.quality_check ? d.quality_check.passed !== false : true, issues: d.quality_check ? (d.quality_check.issues || []) : [] }
+      }));
+    } else {
+      // 兼容旧格式 (JSON字符串)
+      const jsonStr = (items || '').replace(/```json\n?|```/g, '').trim();
+      const parsed = JSON.parse(jsonStr);
+      descs = (parsed.descriptions || []).map(d => ({
+        id: d.dimension_id,
+        nm: d.dimension_name,
+        desc: d.description,
+        qc: { ok: d.qc_pass !== false, issues: d.qc_issues || [] }
+      }));
+    }
     if (descs.length === 0) descs = MOCK_DESCS;
   } catch (err) {
     console.error('AI generation failed, using mock:', err);
@@ -178,9 +189,8 @@ async function regenDesc(id) {
     });
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
-    const jsonStr = data.result.replace(/```json\n?|```/g, '').trim();
-    const parsed = JSON.parse(jsonStr);
-    d.desc = parsed.result || data.result;
+    // 新API直接返回字符串
+    d.desc = typeof data.result === 'string' ? data.result : (data.result.result || JSON.stringify(data.result));
   } catch (err) {
     d.desc = `根据「${dir}」方向重新生成：在中层管理者层级，${d.nm}要求管理者系统性展现相关能力，结合企业业务特点将其转化为可观察的具体行动和可衡量的工作成果，并定期复盘持续优化。`;
   }

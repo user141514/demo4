@@ -131,16 +131,31 @@ async function init() {
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
 
-    // Parse JSON from AI response
-    const jsonStr = data.result.replace(/```json\n?|```/g, '').trim();
-    const parsed = JSON.parse(jsonStr);
-    dims = (parsed.dimensions || []).map(d => ({
+    // 新 API 返回结构化 dict: {recommended: [...], alternatives: [...]}
+    const parsed = data.result;
+    const recommended = parsed.recommended || [];
+    const alternatives = parsed.alternatives || [];
+
+    dims = recommended.map(d => ({
       id: d.id,
       nm: d.name,
       df: d.definition,
       pri: d.priority || 'important',
       ok: false
     }));
+
+    // 备选维度加入备选池
+    alts = [
+      ...alternatives.map((d, i) => ({
+        id: d.id || `DA${i+1}`,
+        nm: d.name,
+        df: d.definition,
+        pri: d.priority || 'supplementary',
+        added: false
+      })),
+      ...MOCK_ALTS
+    ];
+
     if (dims.length === 0) dims = MOCK_DIMS.map(d => ({...d, ok: false}));
   } catch (err) {
     console.error('AI generation failed, using mock:', err);

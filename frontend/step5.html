@@ -169,27 +169,66 @@ function togOv(id) { openMap[id] = !openMap[id]; init(); }
 function expandAll() { anchors.forEach(a => openMap[a.id] = true); init(); }
 function collapseAll() { openMap = {}; init(); }
 
-function doExport(type) {
-  // Build markdown content
-  const data = dims.map(d => {
-    const desc = descs.find(dd => dd.id === d.id);
-    const anc = anchors.find(a => a.id === d.id);
-    return { ...d, desc: desc ? desc.desc : '', anc };
-  });
+async function doExport(type) {
+  // Build model data
+  const companyInfo = JSON.parse(localStorage.getItem('lm_company_info') || '{}');
+  const model = {
+    context: companyInfo,
+    dimensions: dims,
+    descriptions: descs,
+    anchors: anchors,
+    date: new Date().toISOString().slice(0, 10),
+  };
 
-  let md = '# 中层管理者领导力模型\n\n';
+  if (type === 'docx') {
+    try {
+      showToast('正在生成 Word 文档…');
+      const resp = await fetch(`${API}/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format: 'docx', model }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error || '导出失败');
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `领导力模型_${new Date().toISOString().slice(0,10)}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Word 文档已下载');
+    } catch (err) {
+      showToast(`Word导出失败: ${err.message}，改用Markdown`, true);
+      doMarkdownExport(model);
+    }
+  } else if (type === 'pdf') {
+    showToast('PDF导出暂用Markdown替代', true);
+    doMarkdownExport(model);
+  } else {
+    doMarkdownExport(model);
+  }
+}
+
+function doMarkdownExport(model) {
+  const { context, dimensions, descriptions, anchors } = model;
+  let md = `# ${context['行业/业务'] || '企业'} 领导力模型\n\n`;
   md += `> 生成时间：${new Date().toLocaleString()}\n\n`;
   md += `## 模型概览\n\n`;
-  md += `- 维度数量：${dims.length}\n`;
-  md += `- 行为锚定：${anchors.reduce((n, a) => n + (a.ex?.length||0) + (a.st?.length||0) + (a.bl?.length||0), 0)} 条\n\n`;
+  md += `- 维度数量：${dimensions.length}\n`;
+  md += `- 建模层级：${context['建模层级'] || '中层管理者'}\n\n`;
 
-  data.forEach((d, i) => {
+  dimensions.forEach((d, i) => {
+    const desc = descriptions.find(dd => dd.id === d.id);
+    const anc = anchors.find(a => a.id === d.id);
     md += `## ${i + 1}. ${d.nm}\n\n`;
-    if (d.desc) md += `**定位描述**：${d.desc}\n\n`;
-    if (d.anc) {
-      if (d.anc.ex && d.anc.ex.length) { md += `### ⭐ 优秀水平\n\n${d.anc.ex.map(t => `- ${t}`).join('\n')}\n\n`; }
-      if (d.anc.st && d.anc.st.length) { md += `### ✅ 达标水平\n\n${d.anc.st.map(t => `- ${t}`).join('\n')}\n\n`; }
-      if (d.anc.bl && d.anc.bl.length) { md += `### ⚠️ 不达标\n\n${d.anc.bl.map(t => `- ${t}`).join('\n')}\n\n`; }
+    if (desc && desc.desc) md += `**定位描述**：${desc.desc}\n\n`;
+    if (anc) {
+      if (anc.ex && anc.ex.length) { md += `### ⭐ 优秀水平\n\n${anc.ex.map(t => `- ${t}`).join('\n')}\n\n`; }
+      if (anc.st && anc.st.length) { md += `### ✅ 达标水平\n\n${anc.st.map(t => `- ${t}`).join('\n')}\n\n`; }
+      if (anc.bl && anc.bl.length) { md += `### ⚠️ 不达标\n\n${anc.bl.map(t => `- ${t}`).join('\n')}\n\n`; }
     }
   });
 
