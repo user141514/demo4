@@ -14,7 +14,10 @@
 .dc-nm { font-size: 14.5px; font-weight: 600; color: var(--t1); }
 .dc-df { padding: 0 15px 11px; font-size: 13px; color: var(--t2); line-height: 1.6; }
 .dc-src { padding: 0 15px 11px; display: flex; flex-wrap: wrap; gap: 5px; }
-.src-tag { font-size: 10.5px; padding: 2px 8px; border-radius: 100px; }
+.src-tag { font-size: 10.5px; padding: 2px 8px; border-radius: 100px; display: inline-flex; align-items: center; gap: 3px; }
+.src-stg { background: #E1EEF9; color: #1E5080; }
+.src-fwk { background: #FFF0E5; color: #A05510; }
+.src-int { background: #E1F5EE; color: #0F6E56; }
 .dc-ft { padding: 9px 15px; border-top: 1px solid var(--br); display: flex; gap: 7px; background: var(--sf2); }
 .dc.confirmed .dc-ft { background: var(--grbg); }
 .alt-pool { margin-top: 22px; background: var(--sf); border-radius: 12px; border: 1px solid var(--br); padding: 16px 18px; box-shadow: var(--sh); }
@@ -141,6 +144,8 @@ async function init() {
       nm: d.name,
       df: d.definition,
       pri: d.priority || 'important',
+      rationale: d.rationale || '',
+      sources: d.sources || {},
       ok: false
     }));
 
@@ -151,6 +156,8 @@ async function init() {
         nm: d.name,
         df: d.definition,
         pri: d.priority || 'supplementary',
+        rationale: d.rationale || '',
+        sources: d.sources || {},
         added: false
       })),
       ...MOCK_ALTS
@@ -170,6 +177,16 @@ function showContent() {
   render();
 }
 
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function renderSources(sources) {
+  if (!sources) return '';
+  const tags = [];
+  if (sources.strategy) tags.push(`<span class="src-tag src-stg">🔵 ${escHtml(sources.strategy)}</span>`);
+  if (sources.framework) tags.push(`<span class="src-tag src-fwk">🟠 ${escHtml(sources.framework)}</span>`);
+  if (sources.interview) tags.push(`<span class="src-tag src-int">🟢 ${escHtml(sources.interview)}</span>`);
+  return tags.length ? `<div class="dc-src">${tags.join('')}</div>` : '';
+}
+
 function render() {
   const pc = {core:'bg-gr', important:'bg-a', supplementary:'bg-gy'};
   const pl = {core:'核心', important:'重要', supplementary:'补充'};
@@ -178,6 +195,7 @@ function render() {
     return `<div class="dc ${d.ok?'confirmed':''}">
       <div class="dc-hd"><div class="dc-nm">${d.nm}</div><span class="badge ${pc[d.pri]||'bg-gy'}">${pl[d.pri]||'补充'}</span></div>
       <div class="dc-df">${d.df}</div>
+      ${renderSources(d.sources)}
       <div class="dc-ft">
         <button class="btn btn-sm ${d.ok?'btn-o':'btn-p'}" style="${d.ok?'background:var(--gr);color:#fff;border-color:var(--gr)':''}" onclick="toggleOk('${d.id}')">${d.ok?'✓ 已确认':'确认'}</button>
         <button class="btn btn-g btn-sm" onclick="openEdit('${d.id}')">编辑</button>
