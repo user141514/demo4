@@ -261,6 +261,16 @@ def api_export():
                 mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
             )
+        elif export_format == "pdf":
+            from backend.export_service import build_pdf_bytes
+            from urllib.parse import quote
+            content = build_pdf_bytes(model)
+            filename = quote("领导力模型.pdf")
+            return Response(
+                content,
+                mimetype="application/pdf",
+                headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+            )
         elif export_format == "markdown":
             from backend.export_service import build_markdown
             md = build_markdown(model)

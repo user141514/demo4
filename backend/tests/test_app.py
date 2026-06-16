@@ -300,6 +300,20 @@ def test_export_docx_returns_binary(client):
     assert "vnd.openxmlformats" in resp.content_type
 
 
+def test_export_pdf_returns_binary(client):
+    """POST /api/export format=pdf 返回 PDF 二进制"""
+    model = {
+        "context": {"company_name": "Test"},
+        "dimensions": [],
+        "descriptions": [],
+        "anchors": [],
+    }
+    resp = client.post("/api/export", json={"format": "pdf", "model": model})
+    assert resp.status_code == 200
+    assert resp.content_type == "application/pdf"
+    assert resp.data.startswith(b"%PDF")
+
+
 def test_export_rejects_invalid_format(client):
     """不支持的格式返回 400"""
     resp = client.post("/api/export", json={"format": "exe", "model": {}})

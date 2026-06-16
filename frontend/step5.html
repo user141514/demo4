@@ -101,6 +101,7 @@
 <div id="toast" class="toast"></div>
 
 <script>
+const API = '/api';
 const savedDims = localStorage.getItem('lm_dims');
 const dims = savedDims ? JSON.parse(savedDims) : [];
 const savedDescs = localStorage.getItem('lm_descs');
@@ -180,7 +181,7 @@ async function doExport(type) {
     date: new Date().toISOString().slice(0, 10),
   };
 
-  if (type === 'docx') {
+  if (type === 'docx' || type === 'word') {
     try {
       showToast('正在生成 Word 文档…');
       const resp = await fetch(`${API}/export`, {
@@ -201,12 +202,33 @@ async function doExport(type) {
       URL.revokeObjectURL(url);
       showToast('Word 文档已下载');
     } catch (err) {
-      showToast(`Word导出失败: ${err.message}，改用Markdown`, true);
-      doMarkdownExport(model);
+      console.error('DOCX export failed:', err);
+      showToast(`Word导出失败: ${err.message}`, true);
     }
   } else if (type === 'pdf') {
-    showToast('PDF导出暂用Markdown替代', true);
-    doMarkdownExport(model);
+    try {
+      showToast('正在生成 PDF 文档…');
+      const resp = await fetch(`${API}/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format: 'pdf', model }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error || '导出失败');
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `领导力模型_${new Date().toISOString().slice(0,10)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('PDF 文档已下载');
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      showToast(`PDF导出失败: ${err.message}`, true);
+    }
   } else {
     doMarkdownExport(model);
   }
