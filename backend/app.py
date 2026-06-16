@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from flask import Flask, Response, request, jsonify, send_from_directory
 from flask_cors import CORS
 from backend.config import MAX_UPLOAD_SIZE, ALLOWED_EXTENSIONS, load_settings
+from backend.document_parser import DocumentParseError, extract_document_text
 from backend.ai_service import (
     chat,
     analyze_document,
@@ -146,17 +147,11 @@ def api_analyze_doc():
         if len(content) > MAX_UPLOAD_SIZE:
             return jsonify({"error": "文件超过10MB限制"}), 400
 
-        if ext in ("txt", "md"):
-            text = content.decode("utf-8", errors="replace")
-        elif ext == "pdf":
-            text = f"[PDF: {file.filename}] 需安装 pypdf 库进行文本提取"
-        elif ext in ("docx", "doc"):
-            text = f"[DOCX: {file.filename}] 需安装 python-docx 库进行文本提取"
-        else:
-            text = content.decode("utf-8", errors="replace")
-
+        text = extract_document_text(content, file.filename)
         result = analyze_document(text, file.filename)
         return jsonify({"result": result, "filename": file.filename})
+    except DocumentParseError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -264,6 +259,16 @@ def api_export():
             return Response(
                 content,
                 mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+            )
+        elif export_format == "pdf":
+            from backend.export_service import build_pdf_bytes
+            from urllib.parse import quote
+            content = build_pdf_bytes(model)
+            filename = quote("领导力模型.pdf")
+            return Response(
+                content,
+                mimetype="application/pdf",
                 headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
             )
         elif export_format == "markdown":

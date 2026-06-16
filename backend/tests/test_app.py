@@ -1,6 +1,7 @@
 """
 TDD tests for Flask app routes
 """
+import io
 import os
 import sys
 import tempfile
@@ -225,6 +226,47 @@ def test_analyze_doc_requires_file(client):
     assert resp.status_code == 400
 
 
+def test_analyze_doc_uses_extracted_document_text(client, monkeypatch):
+    """PDF 上传时应使用真实提取文本，而不是占位提示"""
+    captured = {}
+
+    def fake_extract(content, filename):
+        captured["filename"] = filename
+        captured["content"] = content
+        return "真实文档内容"
+
+    def fake_analyze(text, filename):
+        captured["analyze_text"] = text
+        captured["analyze_filename"] = filename
+        return f"分析完成: {text}"
+
+    monkeypatch.setattr("backend.app.extract_document_text", fake_extract)
+    monkeypatch.setattr("backend.app.analyze_document", fake_analyze)
+
+    resp = client.post(
+        "/api/analyze-doc",
+        data={"file": (io.BytesIO(b"%PDF-1.4 fake"), "demo.pdf")},
+        content_type="multipart/form-data",
+    )
+
+    assert resp.status_code == 200
+    assert captured["filename"] == "demo.pdf"
+    assert captured["analyze_text"] == "真实文档内容"
+    assert "需安装" not in resp.get_json()["result"]
+
+
+def test_analyze_doc_rejects_legacy_doc_file(client):
+    """老式 .doc 上传应返回明确错误，而不是伪成功"""
+    resp = client.post(
+        "/api/analyze-doc",
+        data={"file": (io.BytesIO(b"fake-doc"), "legacy.doc")},
+        content_type="multipart/form-data",
+    )
+
+    assert resp.status_code == 400
+    assert ".docx" in resp.get_json()["error"]
+
+
 # ═════════════════════════════════════════════════════════════
 # RED: Export Route
 # ═════════════════════════════════════════════════════════════
@@ -256,6 +298,20 @@ def test_export_docx_returns_binary(client):
     resp = client.post("/api/export", json={"format": "docx", "model": model})
     assert resp.status_code == 200
     assert "vnd.openxmlformats" in resp.content_type
+
+
+def test_export_pdf_returns_binary(client):
+    """POST /api/export format=pdf 返回 PDF 二进制"""
+    model = {
+        "context": {"company_name": "Test"},
+        "dimensions": [],
+        "descriptions": [],
+        "anchors": [],
+    }
+    resp = client.post("/api/export", json={"format": "pdf", "model": model})
+    assert resp.status_code == 200
+    assert resp.content_type == "application/pdf"
+    assert resp.data.startswith(b"%PDF")
 
 
 def test_export_rejects_invalid_format(client):

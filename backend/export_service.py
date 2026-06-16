@@ -6,6 +6,13 @@ import html
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
 
 # ── Context normalization ─────────────────────────────────
 
@@ -48,7 +55,7 @@ def _g(ctx, key, default=""):
 
 def build_docx_bytes(model):
     """生成 DOCX 文件（纯 XML，不依赖 python-docx）"""
-    paragraphs = _build_paragraphs(model)
+    paragraphs = _build_paragraphs(_normalize_model(model))
     document_xml = _document_xml(paragraphs)
     buffer = BytesIO()
     with ZipFile(buffer, "w", ZIP_DEFLATED) as zf:
@@ -59,6 +66,33 @@ def build_docx_bytes(model):
     return buffer.getvalue()
 
 
+def build_pdf_bytes(model):
+    """生成 PDF 文件（实用型结构化导出）"""
+    _register_pdf_fonts()
+    paragraphs = _build_paragraphs(_normalize_model(model))
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=16 * mm,
+        bottomMargin=16 * mm,
+    )
+    styles = _pdf_styles()
+    story = []
+
+    for style, text in paragraphs:
+        pdf_style = styles["heading"] if style == "heading" else styles["body"]
+        if style == "title":
+            pdf_style = styles["title"]
+        story.append(Paragraph(_pdf_escape(str(text)), pdf_style))
+        story.append(Spacer(1, 4 * mm if style == "title" else 2.5 * mm))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
 def _key(d):
     """兼容 id / dimension_id 两种字段名"""
     return d.get("id") or d.get("dimension_id") or ""
@@ -66,6 +100,7 @@ def _key(d):
 
 def build_markdown(model):
     """生成 Markdown 文本"""
+    model = _normalize_model(model)
     ctx = _norm(model.get("context") or {})
     dims = model.get("dimensions") or []
     descs = {_key(d): d for d in (model.get("descriptions") or [])}
@@ -124,6 +159,7 @@ def build_markdown(model):
 
 
 def _build_paragraphs(model):
+    model = _normalize_model(model)
     ctx = _norm(model.get("context") or {})
     dims = model.get("dimensions") or []
     descs = {_key(d): d for d in (model.get("descriptions") or [])}
@@ -171,6 +207,91 @@ def _anchor_texts(anchor_data, level):
     if not items:
         return None
     return [item.get("text") if isinstance(item, dict) else str(item) for item in items]
+
+
+def _normalize_model(model):
+    """兼容前端 step5 的简写字段与导出层标准字段"""
+    ctx = _norm(model.get("context") or {})
+    dims = []
+    for dim in (model.get("dimensions") or []):
+        dims.append({
+            **dim,
+            "id": dim.get("id") or dim.get("dimension_id") or "",
+            "name": dim.get("name") or dim.get("nm") or "",
+            "definition": dim.get("definition") or dim.get("df") or "",
+        })
+
+    descs = []
+    for desc in (model.get("descriptions") or []):
+        descs.append({
+            **desc,
+            "id": desc.get("id") or desc.get("dimension_id") or "",
+            "description": desc.get("description") or desc.get("desc") or "",
+        })
+
+    anchors = []
+    for anc in (model.get("anchors") or []):
+        anchor_payload = anc.get("anchors")
+        if not anchor_payload:
+            anchor_payload = {
+                "excellent": anc.get("excellent") or anc.get("ex") or [],
+                "standard": anc.get("standard") or anc.get("st") or [],
+                "below": anc.get("below") or anc.get("bl") or [],
+            }
+        anchors.append({
+            **anc,
+            "id": anc.get("id") or anc.get("dimension_id") or "",
+            "anchors": anchor_payload,
+        })
+
+    return {
+        **model,
+        "context": ctx,
+        "dimensions": dims,
+        "descriptions": descs,
+        "anchors": anchors,
+    }
+
+
+def _pdf_styles():
+    styles = getSampleStyleSheet()
+    return {
+        "title": ParagraphStyle(
+            "PdfTitle",
+            parent=styles["Title"],
+            fontName="STSong-Light",
+            fontSize=18,
+            leading=24,
+            spaceAfter=6,
+        ),
+        "heading": ParagraphStyle(
+            "PdfHeading",
+            parent=styles["Heading2"],
+            fontName="STSong-Light",
+            fontSize=13,
+            leading=18,
+            spaceBefore=4,
+            spaceAfter=2,
+        ),
+        "body": ParagraphStyle(
+            "PdfBody",
+            parent=styles["BodyText"],
+            fontName="STSong-Light",
+            fontSize=10.5,
+            leading=15,
+            spaceAfter=2,
+        ),
+    }
+
+
+def _pdf_escape(text):
+    escaped = html.escape(text)
+    return escaped.replace("\n", "<br/>")
+
+
+def _register_pdf_fonts():
+    if "STSong-Light" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
 
 
 # ── DOCX XML Templates ────────────────────────────────────
