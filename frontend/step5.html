@@ -40,7 +40,14 @@
 .beh-ex { background: var(--grbg); border-color: var(--gr); color: #1A3025; }
 .beh-st { background: var(--p10); border-color: var(--p); color: var(--pdk); }
 .beh-bl { background: var(--rdbg); border-color: var(--rd); color: #3B1010; }
-.radar-wrap { max-width: 480px; margin: 0 auto 22px; padding: 16px; background: var(--sf); border-radius: 12px; border: 1px solid var(--br); box-shadow: var(--sh); }
+.framework-viz { display: grid; grid-template-columns: minmax(180px,1fr) minmax(320px,480px) minmax(180px,1fr); gap: 16px; align-items: center; margin-bottom: 22px; }
+.dim-side { display: flex; flex-direction: column; gap: 9px; }
+.dim-pill { background: var(--sf); border: 1px solid var(--br); border-radius: 8px; padding: 9px 11px; box-shadow: var(--sh); cursor: pointer; transition: all .15s; }
+.dim-pill:hover { border-color: var(--p); background: var(--p10); }
+.dim-pill-nm { font-size: 13px; font-weight: 600; color: var(--t1); }
+.dim-pill-src { font-size: 11px; color: var(--t3); margin-top: 2px; }
+.radar-wrap { max-width: 480px; margin: 0 auto; padding: 16px; background: var(--sf); border-radius: 12px; border: 1px solid var(--br); box-shadow: var(--sh); }
+.framework-title { text-align: center; font-size: 14px; font-weight: 700; color: var(--p80); margin-bottom: 8px; }
 .radar-wrap canvas { max-height: 400px; }
 .radar-fallback { text-align: center; padding: 24px; }
 .radar-fallback table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -53,6 +60,10 @@
   100% { box-shadow: 0 0 0 0 rgba(108,33,109,0); }
 }
 .ov-item.highlight { animation: highlightPulse 1.5s ease-out; border-color: var(--p); }
+@media (max-width: 900px) {
+  .framework-viz { grid-template-columns: 1fr; }
+  .dim-side { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -89,9 +100,14 @@
       <div class="stat-card"><div class="stat-num" id="statTime">—</div><div class="stat-lbl">完成时间</div></div>
     </div>
 
-    <div class="radar-wrap" id="radarArea">
-      <canvas id="radarChart" style="display:none;"></canvas>
-      <div class="radar-fallback" id="radarFallback" style="display:none;"></div>
+    <div class="framework-viz">
+      <div class="dim-side left" id="dimSideLeft"></div>
+      <div class="radar-wrap" id="radarArea">
+        <div class="framework-title">模型维度框架图</div>
+        <canvas id="radarChart" style="display:none;"></canvas>
+        <div class="radar-fallback" id="radarFallback" style="display:none;"></div>
+      </div>
+      <div class="dim-side right" id="dimSideRight"></div>
     </div>
 
     <div class="sec-row">
@@ -184,8 +200,8 @@ function init() {
     </div>`;
   }).join('');
 
-  // 渲染雷达图
-  setTimeout(() => renderRadar(data), 100);
+  // 渲染模型维度框架图
+  setTimeout(() => renderFramework(data), 100);
 }
 
 function togOv(id) { openMap[id] = !openMap[id]; init(); }
@@ -286,9 +302,30 @@ function doMarkdownExport(model) {
   showToast('Markdown 文件已下载');
 }
 
-function priScore(pri) {
-  const map = { core: 5, important: 3.5, supplementary: 2 };
-  return map[pri] || 3;
+function dimSourceLabel(dim) {
+  const src = dim.sources || {};
+  if (src.framework) return src.framework;
+  if (src.strategy) return src.strategy;
+  if (src.interview) return src.interview;
+  if (dim.id && dim.id.startsWith('LN-')) return '标准库映射';
+  if (dim.id && dim.id.startsWith('U_')) return '用户手动添加';
+  return '对话归纳';
+}
+
+function renderFramework(data) {
+  const left = document.getElementById('dimSideLeft');
+  const right = document.getElementById('dimSideRight');
+  const midpoint = Math.ceil(data.length / 2);
+  const buildPills = items => items.map(d => {
+    const dim = dims.find(dd => dd.id === d.id) || d;
+    return `<div class="dim-pill" onclick="focusDim('${d.id}')">
+      <div class="dim-pill-nm">${d.nm}</div>
+      <div class="dim-pill-src">${dimSourceLabel(dim)}</div>
+    </div>`;
+  }).join('');
+  if (left) left.innerHTML = buildPills(data.slice(0, midpoint));
+  if (right) right.innerHTML = buildPills(data.slice(midpoint));
+  renderRadar(data);
 }
 
 function renderRadar(data) {
@@ -311,8 +348,8 @@ function renderRadar(data) {
     data: {
       labels: data.map(d => d.nm),
       datasets: [{
-        label: '维度权重',
-        data: data.map(d => priScore(dims.find(dd => dd.id === d.id)?.pri || 'important')),
+        label: '模型维度',
+        data: data.map(() => 1),
         backgroundColor: 'rgba(108,33,109,0.12)',
         borderColor: '#6C216D',
         borderWidth: 2,
@@ -329,9 +366,9 @@ function renderRadar(data) {
       scales: {
         r: {
           beginAtZero: true,
-          max: 6,
+          max: 1.2,
           min: 0,
-          ticks: { stepSize: 1, display: false },
+          ticks: { display: false },
           grid: { color: 'rgba(108,33,109,0.08)' },
           angleLines: { color: 'rgba(108,33,109,0.08)' },
           pointLabels: { font: { size: 13, family: "'PingFang SC','Microsoft YaHei',sans-serif" }, color: '#1A1520' }
@@ -343,7 +380,8 @@ function renderRadar(data) {
           callbacks: {
             label: function(ctx) {
               const d = data[ctx.dataIndex];
-              return d ? `${d.nm}: 权重 ${priScore(dims.find(dd => dd.id === d.id)?.pri || 'important')}/5` : '';
+              const dim = d ? (dims.find(dd => dd.id === d.id) || d) : null;
+              return d ? `${d.nm}: ${dimSourceLabel(dim)} · ${(d.desc || '').slice(0, 36)}` : '';
             }
           }
         }
@@ -354,34 +392,34 @@ function renderRadar(data) {
           const d = data[idx];
           if (!d) return;
 
-          // 展开该维度
-          if (!openMap[d.id]) {
-            openMap[d.id] = true;
-            init();
-          }
-
-          // 滚动到目标维度
-          setTimeout(() => {
-            const target = document.querySelector(`[data-dim="${d.id}"]`);
-            if (target) {
-              target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              target.classList.add('highlight');
-              setTimeout(() => target.classList.remove('highlight'), 1500);
-            }
-          }, 150);
+          focusDim(d.id);
         }
       }
     }
   });
 }
 
+function focusDim(id) {
+  if (!openMap[id]) {
+    openMap[id] = true;
+    init();
+  }
+  setTimeout(() => {
+    const target = document.querySelector(`[data-dim="${id}"]`);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.classList.add('highlight');
+      setTimeout(() => target.classList.remove('highlight'), 1500);
+    }
+  }, 150);
+}
+
 function buildFallbackTable(data) {
-  let html = '<div style="font-size:14px;font-weight:600;margin-bottom:12px;color:var(--t1)">📊 维度优先级总览</div>';
-  html += '<table><thead><tr><th>维度</th><th>优先级</th><th>描述</th></tr></thead><tbody>';
+  let html = '<div style="font-size:14px;font-weight:600;margin-bottom:12px;color:var(--t1)">模型维度框架图</div>';
+  html += '<table><thead><tr><th>维度</th><th>来源</th><th>定位摘要</th></tr></thead><tbody>';
   data.forEach(d => {
-    const priMap = {core:'核心',important:'重要',supplementary:'补充'};
-    const priLabel = priMap[dims.find(dd => dd.id === d.id)?.pri] || '重要';
-    html += `<tr><td><strong>${d.nm}</strong></td><td>${priLabel}</td><td style="font-size:12px;color:var(--t2)">${(d.desc || '').slice(0,60)}…</td></tr>`;
+    const dim = dims.find(dd => dd.id === d.id) || d;
+    html += `<tr><td><strong>${d.nm}</strong></td><td>${dimSourceLabel(dim)}</td><td style="font-size:12px;color:var(--t2)">${(d.desc || '').slice(0,60)}…</td></tr>`;
   });
   html += '</tbody></table>';
   return html;

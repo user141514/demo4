@@ -135,15 +135,21 @@ async function init() {
     if (anchors.length === 0) anchors = MOCK_ANCHORS;
   } catch (err) {
     console.error('AI generation failed, using mock:', err);
-    anchors = dims.map(d => ({
-      id: d.id, nm: d.nm,
-      ex: [`在${d.nm}方面表现卓越，主动引领变革并取得突破性成果。`],
-      st: [`在${d.nm}方面稳定达标，按照规范完成各项工作要求。`, `能够运用${d.nm}相关能力应对日常管理挑战。`],
-      bl: [`在${d.nm}方面存在明显不足，需要加强相关意识和能力。`, `${d.nm}行为欠缺，影响团队整体绩效和协作效果。`]
-    }));
+    anchors = dims.map(fallbackAnchorsForDim);
     if (anchors.length === 0) anchors = MOCK_ANCHORS;
   }
   showContent();
+}
+
+function fallbackAnchorsForDim(d) {
+  const definition = (d.df || d.definition || d.description || '').replace(/[。；;].*$/, '').slice(0, 32) || d.nm;
+  return {
+    id: d.id,
+    nm: d.nm,
+    ex: [`拆解「${d.nm}」关键场景，建立${definition}相关的检查机制，并在复盘中推动问题闭环。`],
+    st: [`明确「${d.nm}」的工作标准和关键节点，按周跟踪进展并记录偏差。`, `协调相关人员处理「${d.nm}」中的阻碍，形成可追踪的改进行动。`],
+    bl: [`未澄清「${d.nm}」的行为标准，导致团队成员按各自理解执行。`, `发现「${d.nm}」相关偏差后未纠偏，影响交付质量和协作节奏。`]
+  };
 }
 
 function showContent() {

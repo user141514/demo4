@@ -18,6 +18,9 @@
 .src-stg { background: #E1EEF9; color: #1E5080; }
 .src-fwk { background: #FFF0E5; color: #A05510; }
 .src-int { background: #E1F5EE; color: #0F6E56; }
+.priority-judge { margin: 0 15px 11px; padding: 8px 10px; border-radius: 8px; background: #F8F5FA; border: 1px solid #E7DDEB; color: var(--t2); font-size: 11.5px; line-height: 1.55; }
+.priority-judge b { color: var(--t1); font-weight: 600; }
+.priority-judge .pj-sub { color: var(--t3); margin-top: 2px; }
 .dc-ft { padding: 9px 15px; border-top: 1px solid var(--br); display: flex; gap: 7px; background: var(--sf2); }
 .dc.confirmed .dc-ft { background: var(--grbg); }
 .alt-pool { margin-top: 22px; background: var(--sf); border-radius: 12px; border: 1px solid var(--br); padding: 16px 18px; box-shadow: var(--sh); }
@@ -88,9 +91,6 @@
         <option value="supplementary">补充 (supplementary)</option>
       </select>
     </div>
-    <div class="ff"><label>🔵 战略来源</label><input id="editSrcStg" type="text" placeholder="如：战略文档关键词"></div>
-    <div class="ff"><label>🟠 框架来源</label><input id="editSrcFwk" type="text" placeholder="如：Hay Group模型"></div>
-    <div class="ff"><label>🟢 访谈来源</label><input id="editSrcInt" type="text" placeholder="如：对话归纳"></div>
     <div class="modal-ft"><button class="btn btn-o btn-sm" onclick="closeModal()">取消</button><button class="btn btn-p btn-sm" id="saveEditBtn" onclick="saveEdit()">保存</button></div>
   </div>
 </div>
@@ -115,6 +115,13 @@ const MOCK_ALTS = [
 let dims = [];
 let alts = [...MOCK_ALTS];
 let editId = null;
+const PRIORITY_FORMULA_TEXT = '战略相关性35% + 证据强度25% + 层级关键性25% + 发展杠杆15%';
+const PRIORITY_LABEL_TEXT = {core:'核心', important:'重要', supplementary:'补充'};
+const PRIORITY_FALLBACK = {
+  core: { score: 4.6, components: { strategic_relevance: 5, evidence_strength: 4, role_criticality: 5, development_leverage: 4 } },
+  important: { score: 3.55, components: { strategic_relevance: 4, evidence_strength: 3, role_criticality: 4, development_leverage: 3 } },
+  supplementary: { score: 2.25, components: { strategic_relevance: 2, evidence_strength: 2, role_criticality: 3, development_leverage: 2 } },
+};
 
 // Load from localStorage or generate
 const saved = localStorage.getItem('lm_dims');
@@ -159,6 +166,7 @@ async function init() {
       pri: d.priority || 'important',
       rationale: d.rationale || '',
       sources: d.sources || {},
+      pj: normalizePriorityJudgment(d.priority_judgment || d.priority_reasoning || d.pj, d.priority || 'important', d.rationale || ''),
       ok: false
     }));
 
@@ -171,6 +179,7 @@ async function init() {
         pri: d.priority || 'supplementary',
         rationale: d.rationale || '',
         sources: d.sources || {},
+        pj: normalizePriorityJudgment(d.priority_judgment || d.priority_reasoning || d.pj, d.priority || 'supplementary', d.rationale || ''),
         added: false
       })),
       ...MOCK_ALTS
@@ -191,6 +200,52 @@ function showContent() {
 }
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function priorityJudgmentForLabel(pri, rationale) {
+  const label = pri || 'important';
+  const fallback = PRIORITY_FALLBACK[label] || PRIORITY_FALLBACK.important;
+  return {
+    score: fallback.score,
+    label,
+    formula: PRIORITY_FORMULA_TEXT,
+    components: {...fallback.components},
+    rationale: rationale || '系统根据当前优先级标签生成兜底公式化判断。',
+    source: 'frontend'
+  };
+}
+
+function normalizePriorityJudgment(raw, pri, rationale) {
+  if (!raw) return priorityJudgmentForLabel(pri, rationale);
+  const fallback = priorityJudgmentForLabel(raw.label || pri, rationale);
+  const components = raw.components || {};
+  return {
+    score: Number.isFinite(Number(raw.score)) ? Number(raw.score) : fallback.score,
+    label: raw.label || pri || fallback.label,
+    formula: raw.formula || PRIORITY_FORMULA_TEXT,
+    components: {
+      strategic_relevance: components.strategic_relevance || fallback.components.strategic_relevance,
+      evidence_strength: components.evidence_strength || fallback.components.evidence_strength,
+      role_criticality: components.role_criticality || fallback.components.role_criticality,
+      development_leverage: components.development_leverage || fallback.components.development_leverage,
+    },
+    rationale: raw.rationale || rationale || fallback.rationale,
+    source: raw.source || fallback.source
+  };
+}
+
+function renderPriorityJudgment(d) {
+  const pj = normalizePriorityJudgment(d.pj || d.priority_judgment, d.pri, d.rationale);
+  d.pj = pj;
+  const c = pj.components || {};
+  const score = Number.isFinite(Number(pj.score)) ? Number(pj.score).toFixed(2).replace(/\.?0+$/, '') : '--';
+  const componentText = `战略${c.strategic_relevance || '-'} · 证据${c.evidence_strength || '-'} · 层级${c.role_criticality || '-'} · 发展${c.development_leverage || '-'}`;
+  return `<div class="priority-judge">
+    <div><b>优先级判断：</b>${PRIORITY_LABEL_TEXT[pj.label] || '重要'}（${score}/5）</div>
+    <div class="pj-sub">公式：${escHtml(pj.formula || PRIORITY_FORMULA_TEXT)}</div>
+    <div class="pj-sub">分项：${componentText}</div>
+    <div class="pj-sub">理由：${escHtml(pj.rationale || '基于已收集信息由 AI 自主判断')}</div>
+  </div>`;
+}
+
 function renderSources(sources) {
   if (!sources) return '';
   const tags = [];
@@ -215,6 +270,7 @@ function render() {
       <div class="dc-hd"><div class="dc-nm">${d.nm}</div>${sourceBadge(d)}<span class="badge ${pc[d.pri]||'bg-gy'}">${pl[d.pri]||'补充'}</span>${d.manual ? '<span class="badge bg-gy">👤 手动</span>' : ''}</div>
       <div class="dc-df">${d.df}</div>
       ${renderSources(d.sources)}
+      ${renderPriorityJudgment(d)}
       <div class="dc-ft">
         <button class="btn btn-sm ${d.ok?'btn-o':'btn-p'}" style="${d.ok?'background:var(--gr);color:#fff;border-color:var(--gr)':''}" onclick="toggleOk('${d.id}')">${d.ok?'✓ 已确认':'确认'}</button>
         <button class="btn btn-g btn-sm" onclick="openEdit('${d.id}')">编辑</button>
@@ -247,9 +303,6 @@ function openEdit(id) {
   document.getElementById('editName').value = d.nm;
   document.getElementById('editDef').value = d.df;
   document.getElementById('editPri').value = d.pri || 'important';
-  document.getElementById('editSrcStg').value = (d.sources && d.sources.strategy) || '';
-  document.getElementById('editSrcFwk').value = (d.sources && d.sources.framework) || '';
-  document.getElementById('editSrcInt').value = (d.sources && d.sources.interview) || '';
   document.getElementById('saveEditBtn').disabled = false;
   document.getElementById('editModal').classList.add('show');
 }
@@ -263,9 +316,6 @@ function openAdd() {
   document.getElementById('editName').value = '';
   document.getElementById('editDef').value = '';
   document.getElementById('editPri').value = 'important';
-  document.getElementById('editSrcStg').value = '';
-  document.getElementById('editSrcFwk').value = '';
-  document.getElementById('editSrcInt').value = '';
   document.getElementById('saveEditBtn').disabled = true;
   document.getElementById('editModal').classList.add('show');
   // 监听名称输入，空值时禁用保存
@@ -279,11 +329,6 @@ function saveEdit() {
 
   const def = document.getElementById('editDef').value.trim();
   const pri = document.getElementById('editPri').value;
-  const sources = {
-    strategy: document.getElementById('editSrcStg').value.trim(),
-    framework: document.getElementById('editSrcFwk').value.trim(),
-    interview: document.getElementById('editSrcInt').value.trim(),
-  };
 
   if (editId === '__new__') {
     // 重名检测
@@ -299,17 +344,21 @@ function saveEdit() {
       df: def,
       pri: pri,
       rationale: '',
-      sources: sources,
+      sources: { interview: '用户手动添加' },
+      pj: priorityJudgmentForLabel(pri, '用户手动添加，默认按所选优先级进入后续建模。'),
       ok: true,
       manual: true
     });
   } else {
     const d = dims.find(x => x.id === editId);
     if (d) {
+      const oldPri = d.pri || 'important';
       d.nm = name;
       d.df = def;
       d.pri = pri;
-      d.sources = sources;
+      if (oldPri !== pri || !d.pj) {
+        d.pj = priorityJudgmentForLabel(pri, '用户手动调整优先级后，系统按固定公式重新生成判断。');
+      }
     }
   }
   // 同步 localStorage

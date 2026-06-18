@@ -50,6 +50,8 @@
 .sf3-l { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--t3); margin-bottom: 2px; font-weight: 500; }
 .sf3-v { font-size: 12.5px; color: var(--t1); }
 .confirm-ok { background: var(--grbg); border: 1px solid #86EFAC; border-radius: 9px; padding: 10px 13px; font-size: 12.5px; color: var(--gr); font-weight: 500; display: flex; align-items: center; gap: 7px; }
+.confirm-pending { background: var(--ambg); border-color: #FDE68A; color: var(--am); justify-content: space-between; }
+.summary-action { margin-top: 10px; display: flex; justify-content: flex-end; }
 
 /* ── Upload Card ─────────────────────────────────────────────── */
 .upload-card { background: var(--sf); border-radius: 12px; border: 1px solid var(--br); box-shadow: var(--sh); overflow: hidden; }
@@ -160,6 +162,7 @@ let chatMessages = []; // [{role:'ai'|'user', content}]
 let chatBusy = false;
 let summaryConfirmed = false;
 let summaryData = null;
+let collectionState = 'collecting'; // collecting | summary_ready | confirmed
 let uploadFiles = []; // [{id, file, status, result}]
 let docContext = [];
 const CHAT_STEPS_TOTAL = 6;
@@ -172,6 +175,7 @@ if (saved) {
     chatMessages = p.chatMessages || [];
     summaryConfirmed = p.summaryConfirmed || false;
     summaryData = p.summaryData || null;
+    collectionState = p.collectionState || (summaryConfirmed ? 'confirmed' : (summaryData ? 'summary_ready' : 'collecting'));
     docContext = p.docContext || [];
   } catch(e) {}
 }
@@ -223,13 +227,15 @@ function chatKD(e) {
 }
 
 async function chatSend() {
-  if (chatBusy) return;
+  if (chatBusy || collectionState !== 'collecting') return;
   const ci = document.getElementById('ci');
   const t = ci.value.trim(); if (!t) return;
   ci.value = '';
   addMsg('user', t);
+  const userTurns = chatMessages.filter(m => m.role === 'user').length;
+  const forceSummary = userTurns >= CHAT_STEPS_TOTAL;
   chatBusy = true;
-  document.getElementById('sendBtn').disabled = true;
+  updateInteractionState();
 
   // Show typing indicator
   const msgsEl = document.getElementById('cmsgs');
@@ -251,7 +257,8 @@ async function chatSend() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: chatMessages.filter(m => m.role !== 'doc'),
-        context: context
+        context: context,
+        force_summary: forceSummary
       })
     });
     const data = await resp.json();
@@ -267,7 +274,7 @@ async function chatSend() {
         parseSummary(summaryMatch[1]);
       }
       // Progress
-      chatStepIndex = Math.min(chatStepIndex + 1, CHAT_STEPS_TOTAL);
+      chatStepIndex = Math.min(userTurns, CHAT_STEPS_TOTAL);
       updateProg();
     }
   } catch (err) {
@@ -275,7 +282,7 @@ async function chatSend() {
     addMsg('ai', `⚠️ 网络错误：${err.message}。请检查后端是否已启动。`);
   }
   chatBusy = false;
-  document.getElementById('sendBtn').disabled = false;
+  updateInteractionState();
 }
 
 function updateProg() {
@@ -292,11 +299,12 @@ function parseSummary(text) {
   }
   if (Object.keys(summary).length >= 4) {
     summaryData = summary;
-    summaryConfirmed = true;
+    summaryConfirmed = false;
+    collectionState = 'summary_ready';
     renderSummary();
-    document.getElementById('nextBtn').disabled = false;
-    // Save summary for step2
-    localStorage.setItem('lm_company_info', JSON.stringify(summary));
+    document.getElementById('nextBtn').disabled = true;
+    updateInteractionState();
+    saveState();
   }
 }
 
@@ -313,12 +321,21 @@ function renderSummary() {
       <div class="sf3-v" style="font-size:11.5px;color:var(--t2)">${docContext.join('；')}</div>
     </div>`;
   }
+  if (collectionState === 'summary_ready') {
+    html += `<div class="summary-action"><button class="btn btn-p btn-sm" onclick="confirmSummary()">确认摘要</button></div>`;
+  }
   bd.innerHTML = html;
 
   // Show confirm banner
   const rp = document.getElementById('rpane');
   const existing = rp.querySelector('.confirm-ok');
-  if (!existing) {
+  if (existing) existing.remove();
+  if (collectionState === 'summary_ready') {
+    const cb = document.createElement('div');
+    cb.className = 'confirm-ok confirm-pending';
+    cb.innerHTML = '<span>摘要已生成，请确认后进入下一步</span><button class="btn btn-a btn-sm" onclick="confirmSummary()">确认</button>';
+    rp.insertBefore(cb, rp.firstChild);
+  } else if (collectionState === 'confirmed') {
     const cb = document.createElement('div');
     cb.className = 'confirm-ok';
     cb.innerHTML = '✅ 摘要已确认，点击右下角进入下一步';
@@ -326,8 +343,19 @@ function renderSummary() {
   }
 }
 
+function confirmSummary() {
+  if (!summaryData) return;
+  summaryConfirmed = true;
+  collectionState = 'confirmed';
+  localStorage.setItem('lm_company_info', JSON.stringify(summaryData));
+  document.getElementById('nextBtn').disabled = false;
+  renderSummary();
+  updateInteractionState();
+  saveState();
+}
+
 function goNext() {
-  if (!summaryConfirmed) return;
+  if (!summaryConfirmed || collectionState !== 'confirmed') return;
   saveState();
   window.location.href = 'step2.html';
 }
@@ -456,8 +484,23 @@ async function analyzeFile(id) {
 
 function saveState() {
   localStorage.setItem('lm_step1', JSON.stringify({
-    chatMessages, summaryConfirmed, summaryData, docContext
+    chatMessages, summaryConfirmed, summaryData, collectionState, docContext
   }));
+}
+
+function updateInteractionState() {
+  const ci = document.getElementById('ci');
+  const sendBtn = document.getElementById('sendBtn');
+  const locked = collectionState !== 'collecting';
+  if (ci) {
+    ci.disabled = true;
+    ci.disabled = locked || chatBusy;
+    ci.placeholder = collectionState === 'confirmed' ? '摘要已确认' : (collectionState === 'summary_ready' ? '请先确认右侧摘要' : '输入您的回答，按 Enter 发送…');
+  }
+  if (sendBtn) {
+    sendBtn.disabled = true;
+    sendBtn.disabled = locked || chatBusy;
+  }
 }
 
 /* ── Toast ───────────────────────────────────────────────────── */
@@ -482,9 +525,10 @@ function init() {
   renderFileList();
   if (summaryData) {
     renderSummary();
-    document.getElementById('nextBtn').disabled = false;
+    document.getElementById('nextBtn').disabled = collectionState !== 'confirmed';
   }
   updateProg();
+  updateInteractionState();
 }
 
 init();

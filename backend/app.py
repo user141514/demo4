@@ -124,7 +124,7 @@ def api_chat():
     if not data or "messages" not in data:
         return jsonify({"error": "messages required"}), 400
     try:
-        reply = chat(data["messages"], data.get("context", ""))
+        reply = chat(data["messages"], data.get("context", ""), bool(data.get("force_summary", False)))
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
