@@ -44,6 +44,15 @@ def test_step2_does_not_show_priority_judgment():
     assert "标准库映射" in html
 
 
+def test_step2_standard_mapping_uses_model_name_dimension_display():
+    html = _read_frontend("step2.html")
+
+    assert "compactModelName" in html
+    assert "join('-')" in html
+    assert "连接成熟模型" not in html
+    assert "kbId" not in html
+
+
 def test_step4_marks_sample_as_single_dimension_only():
     html = _read_frontend("step4.html")
 

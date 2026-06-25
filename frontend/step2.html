@@ -143,15 +143,14 @@ function inferSourceType(d) { if ((d.id || '').startsWith('LN-') || d.sources?.f
 function escHtml(s) { const div = document.createElement('div'); div.textContent = s || ''; return div.innerHTML; }
 function sourceClass(type) { return type === '战略文档关键词' ? 'src-stg' : (type === '标准库映射' ? 'src-fwk' : 'src-int'); }
 function sourceIcon(type) { return type === '战略文档关键词' ? '🔵' : (type === '标准库映射' ? '🟠' : '🟢'); }
+function compactModelName(name) { return String(name || '').replace(/([\u4e00-\u9fa5])\s+([A-Za-z0-9])/g, '$1$2').replace(/([A-Za-z0-9])\s+([\u4e00-\u9fa5])/g, '$1$2'); }
 function renderSources(d) {
   const type = d.source_type || '对话归纳';
   const details = [];
   if (type === '标准库映射') {
-    const kbId = d.id && String(d.id).startsWith('LN-') ? d.id : '';
     const kbName = d.framework_dimension || d.nm || d.name || '';
-    const fw = d.framework_name || d.sources?.framework || '';
-    details.push(`<span class="src-link">连接成熟模型：${escHtml([kbId, kbName].filter(Boolean).join(' '))}${fw ? ` <small>→ ${escHtml(fw)}</small>` : ''}</span>`);
-    if (d.source_detail && d.source_detail !== `${kbId} ${kbName}`.trim()) details.push(escHtml(d.source_detail));
+    const fw = compactModelName(d.framework_name || d.sources?.framework || '');
+    details.push(`<span class="src-link">${escHtml([fw, kbName].filter(Boolean).join('-'))}</span>`);
   } else if (d.source_detail) {
     details.push(escHtml(d.source_detail));
   }
