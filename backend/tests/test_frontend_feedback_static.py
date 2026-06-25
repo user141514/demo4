@@ -44,6 +44,15 @@ def test_step2_does_not_show_priority_judgment():
     assert "标准库映射" in html
 
 
+def test_step4_marks_sample_as_single_dimension_only():
+    html = _read_frontend("step4.html")
+
+    assert "填入单维度示例" in html
+    assert "可以只填写某一个领导力维度" in html
+    assert "不是所有维度的通用" in html
+    assert "关键事件来源" not in html
+
+
 def test_step5_uses_framework_layout_without_weight_language():
     html = _read_frontend("step5.html")
 

@@ -61,3 +61,29 @@ def test_find_similar_anchor_texts_allows_specific_dimension_behavior():
     ]
 
     assert find_similar_anchor_texts(anchors, threshold=0.82) == []
+
+
+def test_generate_anchors_prompt_limits_sample_to_one_dimension(monkeypatch):
+    from backend import ai_service
+
+    captured = {}
+
+    def fake_call(_system_prompt, prompt, *args, **kwargs):
+        captured["prompt"] = prompt
+        return '{"anchors": []}'
+
+    monkeypatch.setattr(ai_service, "_call_deepseek", fake_call)
+
+    ai_service.generate_anchors(
+        dimensions=[
+            {"id": "D1", "name": "客户协同", "definition": "围绕客户续约推进跨方协作。"},
+            {"id": "D2", "name": "团队赋能", "definition": "围绕成员成长提供反馈和授权。"},
+        ],
+        company_info="企业处于项目交付和客户续约阶段。",
+        critical_incidents="经理推动续约；经理延误协调导致返工。",
+    )
+
+    prompt = captured["prompt"]
+    assert "填写示例只代表某一个单一领导力维度" in prompt
+    assert "不能当成所有维度的通用内容" in prompt
+    assert "只属于该维度的正向/负向行为" in prompt

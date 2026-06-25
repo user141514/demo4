@@ -18,10 +18,10 @@
   <div class="collect-grid" id="collectArea">
     <div class="inc-card">
       <div class="sec-row" style="margin-bottom:8px"><div class="sec-t">真实关键事件与行为素材</div><div class="sec-s">用于生成更具体的行为描述</div></div>
-      <textarea id="incidentText" placeholder="请记录真实管理事件：背景、任务、行动、结果。建议同时提供一个正向事件和一个反向事件。"></textarea>
+      <textarea id="incidentText" placeholder="请记录真实管理事件：背景、任务、行动、结果。可以只填写某一个领导力维度的正反样例；系统不会把该样例套用到全部维度。"></textarea>
       <div id="checkPanel" class="check-panel"></div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;flex-wrap:wrap">
-        <button class="btn btn-o btn-sm" onclick="useSample()">填入示例</button>
+        <button class="btn btn-o btn-sm" onclick="useSample()">填入单维度示例</button>
         <button class="btn btn-a btn-sm" id="checkBtn" onclick="checkIncidents(true)">AI校验完整度</button>
         <button class="btn btn-p btn-sm" onclick="generateAnchors()">生成行为描述</button>
       </div>
@@ -33,6 +33,7 @@
         <li>任务：当时目标、交付标准或时间节点是什么？</li>
         <li>行动：管理者做了哪些可观察动作？</li>
         <li>结果：带来什么结果、影响或复盘结论？</li>
+        <li>示例只用于说明单一领导力维度的行为颗粒度，不代表所有维度通用内容。</li>
         <li>建议同时写正向事件和反向事件，五级区分度会更高。</li>
       </ul>
     </div>
@@ -81,7 +82,7 @@ function currentLevel() {
 }
 
 function useSample() {
-  document.getElementById('incidentText').value = '正向事件：区域项目续约中，经理面对合同到期和交付投诉风险，拆解客户风险清单，组织销售、交付、客户成功三方对齐责任边界，每周复盘进度，最终在合同到期前完成续约。\n反向事件：新产品上线延期时，经理只转发任务，没有澄清跨部门依赖、质量标准和时间节点，问题暴露后才临时协调，导致交付返工并影响上线节奏。';
+  document.getElementById('incidentText').value = '单维度填写示例：以下只对应一个领导力维度（如客户协同/跨部门协作），不是所有维度的通用行为描述。\n正向事件：区域项目续约中，经理面对合同到期和交付投诉风险，拆解客户风险清单，组织销售、交付、客户成功三方对齐责任边界，每周复盘进度，最终在合同到期前完成续约。\n反向事件：新产品上线延期时，经理只转发任务，没有澄清跨部门依赖、质量标准和时间节点，问题暴露后才临时协调，导致交付返工并影响上线节奏。';
   incidentCheck = null;
   localStorage.removeItem('lm_incident_check');
   document.getElementById('checkPanel').classList.remove('show');
@@ -238,7 +239,7 @@ function setView(mode) {
 function render() {
   document.getElementById('ancAcc').innerHTML = anchors.map(a => {
     const isOpen = openMap[a.id] || false;
-    return `<div class="anc-item"><div class="anc-hd" onclick="toggle('${a.id}')"><span class="anc-chev ${isOpen ? 'open' : ''}">▶</span><span class="anc-nm">${escHtml(a.nm)}</span><span class="badge bg-gy">${viewMode === 'bars' ? '5档' : '正负向'}</span></div><div class="anc-bd ${isOpen ? 'open' : ''}"><div class="event-line">关键事件来源：${escHtml(a.evidence_event || '已采集信息')}</div>${viewMode === 'bars' ? renderBars(a) : renderContrast(a)}</div></div>`;
+    return `<div class="anc-item"><div class="anc-hd" onclick="toggle('${a.id}')"><span class="anc-chev ${isOpen ? 'open' : ''}">▶</span><span class="anc-nm">${escHtml(a.nm)}</span><span class="badge bg-gy">${viewMode === 'bars' ? '5档' : '正负向'}</span></div><div class="anc-bd ${isOpen ? 'open' : ''}">${viewMode === 'bars' ? renderBars(a) : renderContrast(a)}</div></div>`;
   }).join('');
 }
 
