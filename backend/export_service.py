@@ -2,6 +2,7 @@
 导出服务 — M05 最终模型文档结构（DOCX / PDF / Markdown）
 """
 import html
+import re
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -61,7 +62,10 @@ def _norm(ctx):
     mapping = {
         "行业/业务": "industry", "规模/阶段": "scale",
         "战略重点": "strategy", "管理痛点": "pains",
-        "建模层级": "target_group", "优秀画像": "profile",
+        "公司名称": "company_name", "管理层级": "management_level",
+        "建模层级": "target_group", "建模对象说明": "target_detail",
+        "管理幅度": "management_span", "层级定位": "level_position",
+        "优秀画像": "profile",
     }
     for cn, en in mapping.items():
         if cn in c:
@@ -75,10 +79,12 @@ def _g(ctx, key, default=""):
         return str(ctx[key] or default)
     # Try Chinese alias
     alias = {
-        "company_name": "行业/业务", "industry": "行业/业务",
+        "company_name": "公司名称", "industry": "行业/业务",
+        "management_level": "管理层级",
         "target_group": "建模层级", "strategy": "战略重点",
         "pains": "管理痛点", "profile": "优秀画像",
-        "scale": "规模/阶段",
+        "scale": "规模/阶段", "target_detail": "建模对象说明",
+        "management_span": "管理幅度", "level_position": "层级定位",
     }
     cn = alias.get(key)
     if cn and cn in ctx:
@@ -171,10 +177,11 @@ def build_export_outline(model):
     descs = {_key(d): d for d in (model.get("descriptions") or [])}
     anchors = {_key(a): a for a in (model.get("anchors") or [])}
 
-    company_label = _g(ctx, 'company_name') or _g(ctx, 'industry', '企业')
+    company_label = _g(ctx, "company_name") or _g(ctx, "industry", "企业")
+    management_level = _g(ctx, "management_level") or _short_management_level(_g(ctx, "target_group", "管理者"))
     target = _g(ctx, "target_group", "管理者")
     blocks = [
-        {"type": "title", "text": f"《{company_label} {target} 领导力模型》"},
+        {"type": "title", "text": f"《{company_label} {management_level} 领导力模型》"},
         {"type": "body", "text": f"版本：V1.0  |  构建日期：{model.get('date', '')}"},
         {"type": "body", "text": f"适用对象：{target}"},
         {"type": "heading", "text": "目录"},
@@ -190,8 +197,9 @@ def build_export_outline(model):
         {"type": "body", "text": "附录B  参照标准库说明"},
         {"type": "heading", "text": "第一章  模型概述"},
         {"type": "subheading", "text": "1.1 建模背景"},
-        {"type": "body", "text": _bg_text(ctx)},
-        {"type": "body", "text": f"本模型聚焦{target}，旨在支撑管理者把战略要求转化为可观察、可发展、可评估的领导力行为。"},
+    ])
+    blocks.extend(_bg_blocks(ctx, target, management_level))
+    blocks.extend([
         {"type": "subheading", "text": "1.2 模型框架图"},
         {"type": "body", "text": " / ".join(dim.get("name", "未命名") for dim in dims) or "暂无维度"},
         {"type": "heading", "text": "第二章  维度详解"},
@@ -241,6 +249,81 @@ def _build_paragraphs(model):
     return [(b["type"], b.get("text", "")) for b in build_export_outline(model) if b["type"] != "table"]
 
 
+def _bg_blocks(ctx, target, management_level):
+    company_name = _g(ctx, "company_name") or "企业"
+    industry = _g(ctx, "industry", "未提供")
+    scale = _g(ctx, "scale", "未提供")
+    target_detail = _g(ctx, "target_detail") or _target_detail_from_target(target, management_level)
+    management_span = _g(ctx, "management_span") or _management_span_from_target(target)
+    level_position = _g(ctx, "level_position") or "承接战略要求，拆解团队目标，推动跨部门协作与团队交付。"
+    strategy = _list_text(_g(ctx, "strategy", "未提供"))
+    pains = _list_text(_g(ctx, "pains", "未提供"))
+
+    return [
+        {"type": "body", "text": "基础信息"},
+        {
+            "type": "table",
+            "rows": [
+                ["项目", "内容"],
+                ["公司名称", company_name],
+                ["行业/业务", industry],
+                ["规模/阶段", scale],
+                ["管理层级", management_level],
+            ],
+        },
+        {"type": "body", "text": "建模对象"},
+        {
+            "type": "table",
+            "rows": [
+                ["项目", "内容"],
+                ["适用对象", target_detail or target],
+                ["管理幅度", management_span or "未提供"],
+                ["层级定位", level_position],
+            ],
+        },
+        {"type": "body", "text": "战略与挑战"},
+        {"type": "body", "text": f"战略重点：{strategy}"},
+        {"type": "body", "text": f"管理痛点：{pains}"},
+        {"type": "body", "text": "本模型旨在支撑管理者把战略要求转化为可观察、可发展、可评估的领导力行为。"},
+    ]
+
+
+def _short_management_level(text):
+    text = str(text or "").strip()
+    if not text:
+        return "管理者"
+    for marker in ["（", "(", "，", ",", "；", ";"]:
+        if marker in text:
+            text = text.split(marker, 1)[0].strip()
+    return text or "管理者"
+
+
+def _target_detail_from_target(target, management_level):
+    text = str(target or "").strip()
+    match = re.search(r"[（(]([^）)]+)[）)]", text)
+    if match:
+        return match.group(1).strip()
+    if management_level and text.startswith(management_level):
+        text = text[len(management_level):].strip(" ，,；;")
+    return text
+
+
+def _management_span_from_target(target):
+    match = re.search(r"(?:管理)?\s*(\d+\s*[-~至到]\s*\d+\s*人)", str(target or ""))
+    if not match:
+        return ""
+    return match.group(1).replace(" ", "")
+
+
+def _list_text(value):
+    items = []
+    for item in re.split(r"[；;]\s*", str(value or "")):
+        cleaned = re.sub(r"^\s*\d+\s*[\.、]\s*", "", item).strip()
+        if cleaned:
+            items.append(cleaned)
+    return "；".join(items) if items else "未提供"
+
+
 def _bg_text(ctx):
     return (
         f"本模型聚焦{_g(ctx, 'target_group', '目标管理群体')}，"
@@ -261,11 +344,9 @@ def _source_text(dim):
         or "--"
     )
     framework_name = dim.get("framework_name") or (dim.get("sources") or {}).get("framework") or ""
-    framework_dimension = dim.get("framework_dimension") or ""
-    extra = ""
     if source_type == "标准库映射":
-        extra = f"；映射维度：{framework_dimension or dim.get('name', '')}；引用模型：{framework_name or source_detail}"
-    return f"来源标签：{source_type}；来源说明：{source_detail}{extra}"
+        return f"来源标签：{source_type}；引用模型：{framework_name or source_detail}"
+    return f"来源标签：{source_type}；来源说明：{source_detail}"
 
 
 def _infer_source_type(dim):

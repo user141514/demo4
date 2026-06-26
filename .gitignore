@@ -24,6 +24,7 @@ backend/uploads/
 backend/app.db
 
 # Generated output files
+tmp/
 领导力模型_*.docx
 领导力模型_*.md
 test.docx

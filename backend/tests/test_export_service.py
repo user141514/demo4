@@ -5,7 +5,7 @@ from io import BytesIO
 from zipfile import ZipFile
 from xml.etree import ElementTree as ET
 
-from backend.export_service import build_docx_bytes, build_markdown, build_pdf_bytes
+from backend.export_service import build_docx_bytes, build_export_outline, build_markdown, build_pdf_bytes
 
 
 W_NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
@@ -170,8 +170,6 @@ def test_build_docx_contains_m05_sections_and_real_anchor_tables():
 
 def test_build_pdf_contains_m05_sections():
     """PDF 导出应复用同一套 M05 内容大纲，并返回有效 PDF 二进制"""
-    from backend.export_service import build_export_outline
-
     outline = build_export_outline(_sample_model())
     text = "\n".join(block["text"] for block in outline if block.get("text"))
     for expected in [
@@ -188,3 +186,96 @@ def test_build_pdf_contains_m05_sections():
 
     content = build_pdf_bytes(_sample_model())
     assert content.startswith(b"%PDF")
+
+
+def test_export_outline_uses_company_name_and_short_management_level_in_title():
+    """标题应使用公司名称和短管理层级，而不是行业/业务和长建模对象说明。"""
+    model = _sample_model()
+    model["context"] = {
+        "公司名称": "杭州测试科技",
+        "行业/业务": "企业级SaaS，服务制造业客户，产品覆盖生产协同、设备数据采集、质量追溯等",
+        "规模/阶段": "约800人，总部杭州，三地办公；正从项目交付型向平台订阅型业务转型",
+        "战略重点": "订阅收入占比提升；平台化复用减少定制；客户价值指标统一；数据驱动决策",
+        "管理痛点": "跨部门协作慢、责任不清；中层对经营指标拆解不足；客户价值理解不一致",
+        "管理层级": "中层管理者",
+        "建模层级": "中层管理者（产品负责人、研发小组负责人、交付经理、客户成功经理、售前方案经理、区域业务负责人），管理6-20人",
+        "优秀画像": "能用数据判断优先级，推动共性需求标准化",
+        "标准库参照": "美世领导力模型 + DDI成功者画像",
+    }
+
+    outline = build_export_outline(model)
+
+    assert outline[0] == {"type": "title", "text": "《杭州测试科技 中层管理者 领导力模型》"}
+
+
+def test_export_outline_structures_modeling_background_as_tables_and_bullets():
+    """建模背景应拆成稳定字段表格和战略挑战列表，避免输出一个混杂长段落。"""
+    model = _sample_model()
+    model["context"] = {
+        "公司名称": "杭州测试科技",
+        "行业/业务": "企业级SaaS，服务制造业客户",
+        "规模/阶段": "约800人，总部杭州，三地办公；正从项目交付型向平台订阅型业务转型",
+        "战略重点": "1. 订阅收入占比提升；2. 平台化复用减少定制；3. 客户价值指标统一；4. 数据驱动决策",
+        "管理痛点": "1. 跨部门协作慢、责任不清；2. 中层对经营指标拆解不足；3. 客户价值理解不一致；4. 人才培养依赖个人带教；5. 问题复盘不深入",
+        "管理层级": "中层管理者",
+        "建模层级": "中层管理者（产品负责人、研发小组负责人、交付经理、客户成功经理、售前方案经理、区域业务负责人），管理6-20人",
+        "管理幅度": "6-20人",
+        "建模对象说明": "产品负责人、研发小组负责人、交付经理、客户成功经理、售前方案经理、区域业务负责人",
+        "层级定位": "承接战略、拆解经营指标、推动跨部门协作与团队交付",
+    }
+
+    outline = build_export_outline(model)
+    bg_index = next(i for i, block in enumerate(outline) if block == {"type": "subheading", "text": "1.1 建模背景"})
+    bg_blocks = outline[bg_index + 1:bg_index + 9]
+
+    assert {"type": "body", "text": "基础信息"} in bg_blocks
+    assert {
+        "type": "table",
+        "rows": [
+            ["项目", "内容"],
+            ["公司名称", "杭州测试科技"],
+            ["行业/业务", "企业级SaaS，服务制造业客户"],
+            ["规模/阶段", "约800人，总部杭州，三地办公；正从项目交付型向平台订阅型业务转型"],
+            ["管理层级", "中层管理者"],
+        ],
+    } in bg_blocks
+    assert {"type": "body", "text": "建模对象"} in bg_blocks
+    assert {
+        "type": "table",
+        "rows": [
+            ["项目", "内容"],
+            ["适用对象", "产品负责人、研发小组负责人、交付经理、客户成功经理、售前方案经理、区域业务负责人"],
+            ["管理幅度", "6-20人"],
+            ["层级定位", "承接战略、拆解经营指标、推动跨部门协作与团队交付"],
+        ],
+    } in bg_blocks
+    assert {"type": "body", "text": "战略与挑战"} in bg_blocks
+    assert {"type": "body", "text": "战略重点：订阅收入占比提升；平台化复用减少定制；客户价值指标统一；数据驱动决策"} in bg_blocks
+    assert {"type": "body", "text": "管理痛点：跨部门协作慢、责任不清；中层对经营指标拆解不足；客户价值理解不一致；人才培养依赖个人带教；问题复盘不深入"} in bg_blocks
+
+
+def test_standard_library_source_text_keeps_only_label_and_reference_model():
+    """标准库映射来源只展示来源标签和引用模型，避免暴露内部编号或映射维度。"""
+    model = _sample_model()
+    model["dimensions"] = [{
+        "id": "LN-001",
+        "name": "战略拆解与落地",
+        "definition": "将战略要求拆解为团队目标和行动计划。",
+        "source_type": "标准库映射",
+        "source_detail": "LN-001",
+        "framework_dimension": "战略拆解与落地",
+        "framework_name": "Hay Group 领导力素质模型",
+    }]
+    model["descriptions"] = [{
+        "id": "LN-001",
+        "description": "能够把战略要求拆成可执行目标。",
+    }]
+    model["anchors"] = [{"id": "LN-001", "bars5": []}]
+
+    outline = build_export_outline(model)
+    source_block = next(block for block in outline if block.get("text", "").startswith("来源标签："))
+
+    assert source_block["text"] == "来源标签：标准库映射；引用模型：Hay Group 领导力素质模型"
+    assert "来源说明" not in source_block["text"]
+    assert "映射维度" not in source_block["text"]
+    assert "LN-001" not in source_block["text"]
