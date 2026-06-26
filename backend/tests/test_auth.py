@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from backend import auth_db
+from backend import auth_service
 from backend.auth_service import register_user, login_user, hash_token, AuthError
 from backend.auth_middleware import load_current_user, require_auth
 
@@ -43,6 +44,25 @@ def test_create_user_stores_email_and_name():
     assert user is not None
     assert user["email"] == "a@b.com"
     assert user["display_name"] == "张三"
+
+
+def test_create_user_stores_profile_and_student_role_by_default():
+    """用户资料字段和默认学生角色会被保存"""
+    auth_db.create_user(
+        "u1",
+        "profile@b.com",
+        "张三",
+        "hash123",
+        "2026-01-01T00:00:00Z",
+        company_name="杭州测试科技",
+        job_title="产品经理",
+    )
+
+    user = auth_db.get_user_by_email("profile@b.com")
+
+    assert user["role"] == "student"
+    assert user["company_name"] == "杭州测试科技"
+    assert user["job_title"] == "产品经理"
 
 
 def test_get_user_by_email_nonexistent_returns_none():
@@ -119,9 +139,20 @@ def test_revoked_session_returns_none():
 
 def test_register_returns_user_and_token():
     """注册成功返回用户信息和 token"""
-    user, token = register_user("new@test.com", "New User", "123456")
+    user, token = register_user(
+        "new@test.com",
+        "New User",
+        "123456",
+        company_name="New Co",
+        job_title="Manager",
+        recovery_question="项目名？",
+        recovery_answer="Alpha",
+    )
     assert user["email"] == "new@test.com"
     assert user["display_name"] == "New User"
+    assert user["role"] == "student"
+    assert user["company_name"] == "New Co"
+    assert user["job_title"] == "Manager"
     assert len(token) > 20  # token 足够长
 
 
@@ -179,8 +210,56 @@ def test_register_rejects_duplicate_email():
 def test_login_returns_user_and_token():
     """登录成功返回用户信息和 token"""
     register_user("login@test.com", "Login User", "mypassword")
-    user, token = login_user("login@test.com", "mypassword")
+    user, token = login_user("login@test.com", "mypassword", role="student")
     assert user["email"] == "login@test.com"
+    assert user["role"] == "student"
+    assert len(token) > 20
+
+
+def test_login_rejects_student_when_instructor_role_requested():
+    """学生账号不能用讲师角色登录"""
+    register_user("student@test.com", "Student", "mypassword")
+
+    with pytest.raises(AuthError) as exc:
+        login_user("student@test.com", "mypassword", role="instructor")
+
+    assert exc.value.code == "invalid_credentials"
+
+
+def test_default_teacher_account_can_login_as_instructor_only():
+    """内置讲师账号只允许按讲师角色登录"""
+    auth_service.ensure_default_teacher()
+
+    teacher, token = login_user("teacher", "meitai123456", role="instructor")
+
+    assert teacher["role"] == "instructor"
+    assert teacher["display_name"] == "讲师"
+    assert len(token) > 20
+
+    with pytest.raises(AuthError):
+        login_user("teacher", "meitai123456", role="student")
+
+
+def test_recovery_question_and_reset_password_flow():
+    """安全问题找回密码可以重置学生账号密码"""
+    register_user(
+        "recover@test.com",
+        "Recover User",
+        "oldpass",
+        recovery_question="第一个项目？",
+        recovery_answer="Alpha 项目",
+    )
+
+    question = auth_service.get_recovery_question("recover@test.com")
+    assert question == "第一个项目？"
+
+    with pytest.raises(AuthError) as exc:
+        auth_service.reset_password_with_recovery("recover@test.com", "Wrong", "newpass1")
+    assert exc.value.code == "invalid_recovery_answer"
+
+    auth_service.reset_password_with_recovery("recover@test.com", "alpha 项目", "newpass1")
+    user, token = login_user("recover@test.com", "newpass1")
+    assert user["email"] == "recover@test.com"
     assert len(token) > 20
 
 

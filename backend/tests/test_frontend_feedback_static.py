@@ -86,6 +86,30 @@ def test_login_page_does_not_offer_guest_entry():
     assert "跳过登录" not in html
     assert "不登录也可直接建模" not in html
     assert "请登录后使用" in html
+    assert "登录（可选）" not in html
+
+
+def test_login_page_uses_mahdi_style_auth_tabs():
+    html = _read_frontend("login.html")
+
+    assert "auth-tabs" in html
+    assert "用户登录" in html
+    assert "用户注册" in html
+    assert "讲师登录" in html
+    assert "找回密码" in html
+    assert "company_name" in html
+    assert "job_title" in html
+    assert "recovery_question" in html
+    assert "recovery_answer" in html
+    assert "role: 'instructor'" in html
+
+
+def test_login_page_hides_default_teacher_credentials():
+    html = _read_frontend("login.html")
+
+    assert "默认讲师账号" not in html
+    assert "teacher / meitai123456" not in html
+    assert "讲师端只读展示摘要信息和最终维度" in html
 
 
 def test_index_page_does_not_offer_guest_mode_entry():
@@ -96,3 +120,23 @@ def test_index_page_does_not_offer_guest_mode_entry():
     assert "直接开始建模" not in html
     assert "无需注册登录" not in html
     assert "请登录后使用" in html
+    assert "teacher.html" in html
+
+
+def test_step2_submits_confirmed_summary_and_dimensions_record():
+    html = _read_frontend("step2.html")
+
+    assert "/api/model-records" in html
+    assert "lm_company_info" in html
+    assert "dimensions: confirmed" in html
+    assert "await fetch" in html
+
+
+def test_teacher_dashboard_lists_summary_and_final_dimensions():
+    html = _read_frontend("teacher.html")
+
+    assert "/api/instructor/model-records" in html
+    assert "讲师看板" in html
+    assert "摘要信息" in html
+    assert "最终维度" in html
+    assert "renderRecords" in html

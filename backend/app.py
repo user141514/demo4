@@ -5,6 +5,8 @@ Flask App — 领导力建模智能体
 import json
 import os
 import sys
+import uuid
+from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, Response, request, jsonify, send_from_directory
@@ -26,8 +28,15 @@ from backend.ai_service import (
     STEP3_GUIDANCE,
     STEP4_GUIDANCE,
 )
-from backend.auth_db import init_auth_db
-from backend.auth_service import AuthError, login_user, register_user
+from backend.auth_db import create_model_record, init_auth_db, list_model_records
+from backend.auth_service import (
+    AuthError,
+    ensure_default_teacher,
+    get_recovery_question,
+    login_user,
+    register_user,
+    reset_password_with_recovery,
+)
 from backend.auth_middleware import (
     clear_session_cookie,
     current_user,
@@ -45,6 +54,7 @@ FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
 
 # 初始化认证数据库
 init_auth_db()
+ensure_default_teacher()
 
 # before_request: 加载用户
 app.before_request(load_current_user)
@@ -88,6 +98,10 @@ def api_register():
             data.get("email", ""),
             data.get("display_name", ""),
             data.get("password", ""),
+            company_name=data.get("company_name", ""),
+            job_title=data.get("job_title", ""),
+            recovery_question=data.get("recovery_question", ""),
+            recovery_answer=data.get("recovery_answer", ""),
         )
         resp = jsonify({"user": user})
         return set_session_cookie(resp, token)
@@ -99,9 +113,37 @@ def api_register():
 def api_login():
     data = request.get_json() or {}
     try:
-        user, token = login_user(data.get("email", ""), data.get("password", ""))
+        user, token = login_user(
+            data.get("email", ""),
+            data.get("password", ""),
+            role=data.get("role", "student"),
+        )
         resp = jsonify({"user": user})
         return set_session_cookie(resp, token)
+    except AuthError as e:
+        return jsonify({"error": e.code, "message": e.message}), e.status_code
+
+
+@app.route("/api/auth/recover/question", methods=["POST"])
+def api_recover_question():
+    data = request.get_json() or {}
+    try:
+        question = get_recovery_question(data.get("email", ""))
+        return jsonify({"recovery_question": question})
+    except AuthError as e:
+        return jsonify({"error": e.code, "message": e.message}), e.status_code
+
+
+@app.route("/api/auth/recover/reset", methods=["POST"])
+def api_recover_reset():
+    data = request.get_json() or {}
+    try:
+        reset_password_with_recovery(
+            data.get("email", ""),
+            data.get("recovery_answer", ""),
+            data.get("new_password", ""),
+        )
+        return jsonify({"ok": True})
     except AuthError as e:
         return jsonify({"error": e.code, "message": e.message}), e.status_code
 
@@ -124,6 +166,7 @@ def api_me():
 # ── Step1: Chat + Documents ───────────────────────────────────
 
 @app.route("/api/chat", methods=["POST"])
+@require_auth
 def api_chat():
     data = request.get_json()
     if not data or "messages" not in data:
@@ -136,6 +179,7 @@ def api_chat():
 
 
 @app.route("/api/analyze-doc", methods=["POST"])
+@require_auth
 def api_analyze_doc():
     if "file" not in request.files:
         return jsonify({"error": "file required"}), 400
@@ -164,6 +208,7 @@ def api_analyze_doc():
 # ── Step2: Dimensions ─────────────────────────────────────────
 
 @app.route("/api/generate-dimensions", methods=["POST"])
+@require_auth
 def api_generate_dimensions():
     data = request.get_json()
     if not data or "company_info" not in data:
@@ -184,6 +229,7 @@ def api_generate_dimensions():
 # ── Step3: Descriptions ───────────────────────────────────────
 
 @app.route("/api/generate-descriptions", methods=["POST"])
+@require_auth
 def api_generate_descriptions():
     data = request.get_json()
     if not data or "dimensions" not in data:
@@ -207,6 +253,7 @@ def api_generate_descriptions():
 # ── Step4: Anchors ────────────────────────────────────────────
 
 @app.route("/api/check-incidents", methods=["POST"])
+@require_auth
 def api_check_incidents():
     data = request.get_json() or {}
     result = check_critical_incidents(
@@ -219,6 +266,7 @@ def api_check_incidents():
 
 
 @app.route("/api/generate-anchors", methods=["POST"])
+@require_auth
 def api_generate_anchors():
     data = request.get_json()
     if not data or "dimensions" not in data:
@@ -246,6 +294,7 @@ def api_generate_anchors():
 # ── Regenerate ────────────────────────────────────────────────
 
 @app.route("/api/regenerate", methods=["POST"])
+@require_auth
 def api_regenerate():
     data = request.get_json()
     if not data:
@@ -264,6 +313,7 @@ def api_regenerate():
 # ── Export ────────────────────────────────────────────────────
 
 @app.route("/api/export", methods=["POST"])
+@require_auth
 def api_export():
     """导出领导力模型为 DOCX 或 Markdown"""
     data = request.get_json()
@@ -302,6 +352,67 @@ def api_export():
             return jsonify({"error": f"不支持的导出格式: {export_format}"}), 400
     except Exception as e:
         return jsonify({"error": f"导出失败: {e}"}), 500
+
+
+# ── Model Records / Instructor Dashboard ─────────────────────
+
+@app.route("/api/model-records", methods=["POST"])
+@require_auth
+def api_create_model_record():
+    user = current_user()
+    if user.get("role") != "student":
+        return jsonify({"error": "forbidden", "message": "讲师账号不能提交学生建模记录"}), 403
+
+    data = request.get_json() or {}
+    summary = data.get("summary")
+    dimensions = data.get("dimensions")
+    if not isinstance(summary, dict) or not isinstance(dimensions, list):
+        return jsonify({"error": "invalid_record", "message": "summary 必须为对象，dimensions 必须为数组"}), 400
+
+    record_id = uuid.uuid4().hex
+    created_at = _now_str()
+    create_model_record(
+        record_id,
+        user["user_id"],
+        json.dumps(summary, ensure_ascii=False),
+        json.dumps(dimensions, ensure_ascii=False),
+        created_at,
+    )
+    return jsonify({"record": {
+        "record_id": record_id,
+        "created_at": created_at,
+        "summary": summary,
+        "dimensions": dimensions,
+    }})
+
+
+@app.route("/api/instructor/model-records", methods=["GET"])
+@require_auth
+def api_instructor_model_records():
+    user = current_user()
+    if user.get("role") != "instructor":
+        return jsonify({"error": "forbidden", "message": "当前账号无权访问讲师看板"}), 403
+
+    records = []
+    for row in list_model_records():
+        records.append({
+            "record_id": row["record_id"],
+            "created_at": row["created_at"],
+            "summary": json.loads(row["summary_json"]),
+            "dimensions": json.loads(row["dimensions_json"]),
+            "user": {
+                "user_id": row["user_id"],
+                "email": row["email"],
+                "display_name": row["display_name"],
+                "company_name": row["company_name"],
+                "job_title": row["job_title"],
+            },
+        })
+    return jsonify({"records": records})
+
+
+def _now_str():
+    return datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None).isoformat() + "Z"
 
 
 # ── Main ──────────────────────────────────────────────────────

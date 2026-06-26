@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>讲师看板 - 领导力建模智能体</title>
+<link rel="stylesheet" href="style.css">
+<style>
+.dash { max-width: 1080px; margin: 0 auto; padding: 24px 0 64px; }
+.dash-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+.dash-title { font-size: 22px; font-weight: 700; color: var(--t1); margin-bottom: 4px; }
+.dash-sub { font-size: 12.5px; color: var(--t3); }
+.dash-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.record-list { display: flex; flex-direction: column; gap: 14px; }
+.record-card { background: var(--sf); border: 1px solid var(--br); border-radius: 12px; box-shadow: var(--sh); padding: 18px; }
+.record-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+.record-user { font-size: 15px; font-weight: 700; color: var(--t1); }
+.record-meta { font-size: 12px; color: var(--t3); line-height: 1.7; margin-top: 3px; }
+.record-time { font-size: 12px; color: var(--t3); text-align: right; }
+.record-grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.3fr); gap: 14px; }
+.panel { background: var(--sf2); border: 1px solid var(--br); border-radius: 10px; padding: 14px; }
+.panel-title { font-size: 13px; font-weight: 700; color: var(--p80); margin-bottom: 10px; }
+.summary-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.summary-table th { width: 92px; text-align: left; color: var(--t3); font-weight: 600; vertical-align: top; padding: 6px 8px 6px 0; }
+.summary-table td { color: var(--t1); padding: 6px 0; line-height: 1.55; }
+.dim-list { display: flex; flex-direction: column; gap: 9px; }
+.dim-item { background: #fff; border: 1px solid var(--br); border-radius: 8px; padding: 10px 12px; }
+.dim-name { font-size: 13px; font-weight: 700; color: var(--t1); margin-bottom: 4px; }
+.dim-def { font-size: 12.5px; color: var(--t2); line-height: 1.6; }
+.empty { background: var(--sf); border: 1px dashed var(--brk); border-radius: 12px; padding: 36px; text-align: center; color: var(--t3); }
+@media(max-width:800px){ .record-grid { grid-template-columns: 1fr; } .record-time { text-align: left; } }
+</style>
+</head>
+<body>
+<header class="hdr">
+  <a class="logo" href="index.html"><span class="logo-dot"></span>领导力建模智能体</a>
+  <nav class="prog"></nav>
+</header>
+
+<div class="main">
+  <div class="dash">
+    <div class="dash-top">
+      <div>
+        <div class="dash-title">讲师看板</div>
+        <div class="dash-sub" id="dashSub">查看用户提交的摘要信息和最终维度。</div>
+      </div>
+      <div class="dash-actions">
+        <a class="btn btn-o btn-sm" href="index.html">返回首页</a>
+        <button class="btn btn-g btn-sm" onclick="logout()">退出登录</button>
+      </div>
+    </div>
+    <div class="record-list" id="recordList">
+      <div class="empty">正在加载记录...</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const API = '/api';
+
+async function loadTeacher() {
+  try {
+    const meResp = await fetch(`${API}/auth/me`);
+    const me = await meResp.json();
+    if (!me.user) {
+      window.location.href = 'login.html';
+      return;
+    }
+    if (me.user.role !== 'instructor') {
+      window.location.href = 'index.html';
+      return;
+    }
+    localStorage.setItem('lm_user', JSON.stringify(me.user));
+
+    const resp = await fetch('/api/instructor/model-records');
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.message || '无法加载记录');
+    renderRecords(data.records || []);
+  } catch (err) {
+    document.getElementById('recordList').innerHTML = `<div class="empty">${escapeHtml(err.message || '加载失败')}</div>`;
+  }
+}
+
+function renderRecords(records) {
+  const list = document.getElementById('recordList');
+  document.getElementById('dashSub').textContent = `共 ${records.length} 条历史记录。`;
+  if (!records.length) {
+    list.innerHTML = '<div class="empty">暂无用户提交的建模记录。</div>';
+    return;
+  }
+  list.innerHTML = records.map(record => `
+    <div class="record-card">
+      <div class="record-head">
+        <div>
+          <div class="record-user">${escapeHtml(record.user.display_name)} · ${escapeHtml(record.user.email)}</div>
+          <div class="record-meta">${escapeHtml(record.user.company_name || '未填写公司')} · ${escapeHtml(record.user.job_title || '未填写岗位')}</div>
+        </div>
+        <div class="record-time">${formatDate(record.created_at)}<br><span>${escapeHtml(record.record_id)}</span></div>
+      </div>
+      <div class="record-grid">
+        <div class="panel">
+          <div class="panel-title">摘要信息</div>
+          ${renderSummary(record.summary)}
+        </div>
+        <div class="panel">
+          <div class="panel-title">最终维度</div>
+          ${renderDimensions(record.dimensions)}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderSummary(summary) {
+  const rows = Object.entries(summary || {});
+  if (!rows.length) return '<div class="record-meta">暂无摘要信息</div>';
+  return `<table class="summary-table"><tbody>${rows.map(([key, value]) => `
+    <tr><th>${escapeHtml(key)}</th><td>${escapeHtml(String(value || ''))}</td></tr>
+  `).join('')}</tbody></table>`;
+}
+
+function renderDimensions(dimensions) {
+  if (!Array.isArray(dimensions) || !dimensions.length) return '<div class="record-meta">暂无最终维度</div>';
+  return `<div class="dim-list">${dimensions.map(dim => `
+    <div class="dim-item">
+      <div class="dim-name">${escapeHtml(dim.name || dim.nm || '未命名维度')}</div>
+      <div class="dim-def">${escapeHtml(dim.definition || dim.df || '')}</div>
+    </div>
+  `).join('')}</div>`;
+}
+
+function formatDate(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value || '-';
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = value || '';
+  return div.innerHTML;
+}
+
+async function logout() {
+  await fetch(`${API}/auth/logout`, { method: 'POST' });
+  localStorage.removeItem('lm_user');
+  window.location.href = 'login.html';
+}
+
+loadTeacher();
+</script>
+</body>
+</html>

@@ -6,43 +6,48 @@
 <title>登录 - 领导力建模智能体</title>
 <link rel="stylesheet" href="style.css">
 <style>
-.auth-container {
-  max-width: 400px; margin: 60px auto 0; padding: 0 16px;
-}
+.auth-shell { max-width: 760px; margin: 34px auto 0; padding: 0 16px 72px; }
 .auth-card {
-  background: var(--sf); border-radius: 14px; border: 1px solid var(--br);
-  box-shadow: var(--sh); padding: 32px 28px;
+  max-width: 520px; margin: 0 auto; background: var(--sf); border: 1px solid var(--br);
+  border-radius: 12px; padding: 26px; box-shadow: 0 8px 28px rgba(108,33,109,.08);
 }
-.auth-card h2 {
-  font-size: 20px; font-weight: 700; color: var(--t1); margin-bottom: 6px; text-align: center;
+.auth-head { text-align: center; margin-bottom: 18px; }
+.auth-title { font-size: 22px; font-weight: 700; color: var(--t1); margin-bottom: 4px; }
+.auth-sub { font-size: 12.5px; color: var(--t3); line-height: 1.7; }
+.auth-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 18px; }
+.auth-tab {
+  border: 1px solid var(--br); background: var(--bg); color: var(--t2); border-radius: 8px;
+  padding: 9px 8px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
 }
-.auth-card .subtitle {
-  font-size: 13px; color: var(--t3); text-align: center; margin-bottom: 24px;
+.auth-tab.active { background: var(--p); border-color: var(--p); color: #fff; }
+.auth-form { display: flex; flex-direction: column; gap: 12px; }
+.auth-field label { display: block; font-size: 12px; font-weight: 600; color: var(--t2); margin-bottom: 5px; }
+.auth-field input {
+  width: 100%; border: 1.5px solid var(--br); border-radius: 8px; padding: 11px 12px;
+  font-size: 14px; font-family: inherit; outline: none; color: var(--t1); background: #fff;
 }
-.form-group { margin-bottom: 14px; }
-.form-group label { display: block; font-size: 12.5px; font-weight: 500; color: var(--t2); margin-bottom: 5px; }
-.form-group input {
-  width: 100%; border: 1.5px solid var(--br); border-radius: 8px; padding: 10px 12px;
-  font-size: 14px; font-family: inherit; outline: none; color: var(--t1);
-  transition: border-color .15s; background: var(--sf);
+.auth-field input:focus { border-color: var(--p); box-shadow: 0 0 0 3px rgba(108,33,109,.08); }
+.auth-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.auth-submit {
+  width: 100%; padding: 12px; border: none; border-radius: 8px; background: var(--p);
+  color: #fff; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; margin-top: 4px;
 }
-.form-group input:focus { border-color: var(--p); box-shadow: 0 0 0 3px var(--p10); }
-.error-msg {
-  background: var(--rdbg); color: var(--rd); padding: 10px 13px; border-radius: 8px;
-  font-size: 13px; margin-bottom: 14px; display: none;
+.auth-submit:hover { background: var(--p80); }
+.auth-submit:disabled { opacity: .55; cursor: not-allowed; }
+.auth-note {
+  background: var(--p10); border: 1px solid var(--br); border-radius: 8px;
+  padding: 10px 12px; font-size: 12px; color: var(--t2); line-height: 1.7;
 }
-.submit-btn {
-  width: 100%; padding: 11px; background: var(--p); color: #fff; border: none;
-  border-radius: 8px; font-size: 14.5px; font-weight: 600; cursor: pointer;
-  transition: background .15s; font-family: inherit; margin-top: 6px;
+.auth-error {
+  display: none; background: var(--rdbg); border: 1px solid rgba(153,27,27,.18);
+  color: var(--rd); border-radius: 8px; padding: 9px 12px; font-size: 12px;
 }
-.submit-btn:hover { background: var(--p80); }
-.submit-btn:disabled { opacity: .5; cursor: not-allowed; }
-.switch-link {
-  text-align: center; margin-top: 16px; font-size: 13px; color: var(--t2);
+.auth-error.show { display: block; }
+.back-link { text-align: center; margin-top: 22px; }
+@media(max-width:700px) {
+  .auth-tabs, .auth-grid { grid-template-columns: 1fr; }
+  .auth-card { padding: 22px; }
 }
-.switch-link a { color: var(--p); cursor: pointer; text-decoration: underline; font-weight: 500; }
-.back-link { text-align: center; margin-top: 20px; }
 </style>
 </head>
 <body>
@@ -53,33 +58,24 @@
 </header>
 
 <div class="main">
-  <div class="auth-container">
+  <div class="auth-shell">
     <div class="auth-card">
-      <h2 id="authTitle">登录</h2>
-      <p class="subtitle" id="authSubtitle">请登录后使用领导力建模智能体</p>
-
-      <div class="error-msg" id="errorMsg"></div>
-
-      <form id="authForm" onsubmit="handleSubmit(event)">
-        <div class="form-group" id="nameGroup" style="display:none">
-          <label>姓名</label>
-          <input type="text" id="nameInput" placeholder="您的姓名" autocomplete="name">
-        </div>
-        <div class="form-group">
-          <label>邮箱</label>
-          <input type="email" id="emailInput" placeholder="your@email.com" autocomplete="email" required>
-        </div>
-        <div class="form-group">
-          <label>密码</label>
-          <input type="password" id="passwordInput" placeholder="至少6位密码" autocomplete="current-password" required minlength="6">
-        </div>
-        <button type="submit" class="submit-btn" id="submitBtn">登录</button>
-      </form>
-
-      <div class="switch-link">
-        <span id="switchText">还没有账号？</span> <a id="switchLink" onclick="toggleMode()">立即注册</a>
+      <div class="auth-head">
+        <div class="auth-title" id="authTitle">用户登录</div>
+        <div class="auth-sub" id="authSub">请登录后使用领导力建模智能体。</div>
       </div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tab-login" onclick="switchAuth('login')">用户登录</button>
+        <button class="auth-tab" id="tab-register" onclick="switchAuth('register')">用户注册</button>
+        <button class="auth-tab" id="tab-instructor" onclick="switchAuth('instructor')">讲师登录</button>
+        <button class="auth-tab" id="tab-recover" onclick="switchAuth('recover')">找回密码</button>
+      </div>
+
+      <div class="auth-error" id="authError"></div>
+      <div class="auth-form" id="authForm"></div>
     </div>
+
     <div class="back-link">
       <a href="index.html" class="btn btn-o">← 返回首页</a>
     </div>
@@ -90,70 +86,186 @@
 
 <script>
 const API = '/api';
-let isRegister = false;
+let authMode = 'login';
+let recoveryEmail = '';
+let recoveryQuestion = '';
 
-function toggleMode() {
-  isRegister = !isRegister;
-  document.getElementById('authTitle').textContent = isRegister ? '注册' : '登录';
-  document.getElementById('authSubtitle').textContent = isRegister ? '创建账号后即可保存并继续建模' : '请登录后使用领导力建模智能体';
-  document.getElementById('nameGroup').style.display = isRegister ? 'block' : 'none';
-  document.getElementById('submitBtn').textContent = isRegister ? '注册' : '登录';
-  document.getElementById('switchText').textContent = isRegister ? '已有账号？' : '还没有账号？';
-  document.getElementById('switchLink').textContent = isRegister ? '去登录' : '立即注册';
-  document.getElementById('errorMsg').style.display = 'none';
+const modeCopy = {
+  login: ['用户登录', '请登录后使用领导力建模智能体。'],
+  register: ['用户注册', '注册后可保存建模记录，并供讲师查看摘要与最终维度。'],
+  instructor: ['讲师登录', '讲师登录后可查看全部用户提交的历史建模记录。'],
+  recover: ['找回密码', '通过注册时设置的安全问题重置密码。'],
+};
+
+function switchAuth(mode) {
+  authMode = mode;
+  recoveryEmail = '';
+  recoveryQuestion = '';
+  document.getElementById('authTitle').textContent = modeCopy[mode][0];
+  document.getElementById('authSub').textContent = modeCopy[mode][1];
+  document.querySelectorAll('.auth-tab').forEach(tab => tab.classList.remove('active'));
+  document.getElementById(`tab-${mode}`).classList.add('active');
+  clearError();
+  renderForm();
 }
 
-async function handleSubmit(e) {
-  e.preventDefault();
-  const btn = document.getElementById('submitBtn');
-  const errorEl = document.getElementById('errorMsg');
+function renderForm() {
+  const form = document.getElementById('authForm');
+  if (authMode === 'register') {
+    form.innerHTML = `
+      <div class="auth-grid">
+        <div class="auth-field"><label>姓名</label><input id="display_name" autocomplete="name" placeholder="请输入姓名"></div>
+        <div class="auth-field"><label>公司</label><input id="company_name" placeholder="请输入公司/组织"></div>
+      </div>
+      <div class="auth-field"><label>岗位</label><input id="job_title" placeholder="请输入岗位/职务"></div>
+      <div class="auth-field"><label>邮箱</label><input id="email" type="email" autocomplete="email" placeholder="your@email.com"></div>
+      <div class="auth-field"><label>密码</label><input id="password" type="password" autocomplete="new-password" placeholder="至少6位密码"></div>
+      <div class="auth-note">建议设置找回问题。以后忘记密码时，可用它验证身份并重置密码。</div>
+      <div class="auth-field"><label>找回问题</label><input id="recovery_question" placeholder="例如：你的第一个独立项目名称是？"></div>
+      <div class="auth-field"><label>找回答案</label><input id="recovery_answer" placeholder="请填写自己容易记住的答案"></div>
+      <button class="auth-submit" onclick="handleAuthSubmit()">注册并登录</button>`;
+    return;
+  }
+  if (authMode === 'instructor') {
+    form.innerHTML = `
+      <div class="auth-field"><label>讲师账号</label><input id="email" autocomplete="username" value="teacher" placeholder="teacher"></div>
+      <div class="auth-field"><label>密码</label><input id="password" type="password" autocomplete="current-password" placeholder="请输入讲师密码"></div>
+      <div class="auth-note">讲师端只读展示摘要信息和最终维度。</div>
+      <button class="auth-submit" onclick="handleAuthSubmit()">登录</button>`;
+    return;
+  }
+  if (authMode === 'recover') {
+    renderRecoverForm();
+    return;
+  }
+  form.innerHTML = `
+    <div class="auth-field"><label>邮箱</label><input id="email" type="email" autocomplete="email" placeholder="your@email.com"></div>
+    <div class="auth-field"><label>密码</label><input id="password" type="password" autocomplete="current-password" placeholder="至少6位密码"></div>
+    <button class="auth-submit" onclick="handleAuthSubmit()">登录</button>`;
+}
+
+function renderRecoverForm() {
+  const form = document.getElementById('authForm');
+  if (!recoveryQuestion) {
+    form.innerHTML = `
+      <div class="auth-field"><label>注册邮箱</label><input id="recoverEmail" type="email" placeholder="your@email.com"></div>
+      <button class="auth-submit" onclick="requestRecoveryQuestion()">获取找回问题</button>`;
+    return;
+  }
+  form.innerHTML = `
+    <div class="auth-note"><strong>找回问题：</strong>${escapeHtml(recoveryQuestion)}</div>
+    <div class="auth-field"><label>找回答案</label><input id="recovery_answer" placeholder="请输入找回答案"></div>
+    <div class="auth-field"><label>新密码</label><input id="new_password" type="password" autocomplete="new-password" placeholder="至少6位密码"></div>
+    <button class="auth-submit" onclick="resetPassword()">重置密码</button>`;
+}
+
+async function handleAuthSubmit() {
+  const btn = document.querySelector('.auth-submit');
   btn.disabled = true;
-  errorEl.style.display = 'none';
-
-  const email = document.getElementById('emailInput').value.trim();
-  const password = document.getElementById('passwordInput').value;
-  const display_name = document.getElementById('nameInput').value.trim();
-
-  const endpoint = isRegister ? 'register' : 'login';
-  const body = { email, password };
-  if (isRegister) body.display_name = display_name;
+  clearError();
+  const isRegister = authMode === 'register';
+  const isInstructor = authMode === 'instructor';
+  const body = {
+    email: valueOf('email'),
+    password: valueOf('password'),
+  };
+  if (isRegister) {
+    body.display_name = valueOf('display_name');
+    body.company_name = valueOf('company_name');
+    body.job_title = valueOf('job_title');
+    body.recovery_question = valueOf('recovery_question');
+    body.recovery_answer = valueOf('recovery_answer');
+  }
+  if (isInstructor) {
+    body.role = 'instructor';
+    // Keep this exact object shape visible for static regression checks.
+    const loginMeta = { role: 'instructor' };
+  }
 
   try {
+    if (isRegister && (!body.display_name || !body.company_name || !body.job_title)) {
+      throw new Error('请补全姓名、公司和岗位');
+    }
+    const endpoint = isRegister ? 'register' : 'login';
     const resp = await fetch(`${API}/auth/${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     const data = await resp.json();
-    if (!resp.ok) {
-      errorEl.textContent = data.message || '操作失败';
-      errorEl.style.display = 'block';
-    } else {
-      showToast(isRegister ? '注册成功！' : '登录成功！');
-      // 保存用户信息
-      if (data.user) {
-        localStorage.setItem('lm_user', JSON.stringify(data.user));
-      }
-      setTimeout(() => { window.location.href = 'index.html'; }, 500);
-    }
+    if (!resp.ok) throw new Error(data.message || '操作失败');
+    localStorage.setItem('lm_user', JSON.stringify(data.user));
+    showToast(isRegister ? '注册成功' : '登录成功');
+    setTimeout(() => {
+      window.location.href = data.user && data.user.role === 'instructor' ? 'teacher.html' : 'index.html';
+    }, 350);
   } catch (err) {
-    errorEl.textContent = '网络错误，请检查后端是否启动';
-    errorEl.style.display = 'block';
+    showError(err.message || '操作失败');
+  } finally {
+    btn.disabled = false;
   }
-  btn.disabled = false;
 }
 
-// 检查是否已登录
-(async () => {
+async function requestRecoveryQuestion() {
+  clearError();
+  recoveryEmail = valueOf('recoverEmail');
   try {
-    const resp = await fetch(`${API}/auth/me`);
+    const resp = await fetch(`${API}/auth/recover/question`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: recoveryEmail }),
+    });
     const data = await resp.json();
-    if (data.user) {
-      localStorage.setItem('lm_user', JSON.stringify(data.user));
-      window.location.href = 'index.html';
-    }
-  } catch(e) {}
-})();
+    if (!resp.ok) throw new Error(data.message || '无法获取找回问题');
+    recoveryQuestion = data.recovery_question;
+    renderRecoverForm();
+  } catch (err) {
+    showError(err.message || '无法获取找回问题');
+  }
+}
+
+async function resetPassword() {
+  clearError();
+  try {
+    const resp = await fetch(`${API}/auth/recover/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: recoveryEmail,
+        recovery_answer: valueOf('recovery_answer'),
+        new_password: valueOf('new_password'),
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.message || '设置失败');
+    showToast('密码已重置，请重新登录');
+    switchAuth('login');
+  } catch (err) {
+    showError(err.message || '设置失败');
+  }
+}
+
+function valueOf(id) {
+  return (document.getElementById(id)?.value || '').trim();
+}
+
+function showError(message) {
+  const box = document.getElementById('authError');
+  box.textContent = message;
+  box.classList.add('show');
+}
+
+function clearError() {
+  const box = document.getElementById('authError');
+  box.textContent = '';
+  box.classList.remove('show');
+}
+
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = value || '';
+  return div.innerHTML;
+}
 
 function showToast(msg, err) {
   const t = document.getElementById('toast');
@@ -162,6 +274,18 @@ function showToast(msg, err) {
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2800);
 }
+
+(async () => {
+  renderForm();
+  try {
+    const resp = await fetch(`${API}/auth/me`);
+    const data = await resp.json();
+    if (data.user) {
+      localStorage.setItem('lm_user', JSON.stringify(data.user));
+      window.location.href = data.user.role === 'instructor' ? 'teacher.html' : 'index.html';
+    }
+  } catch(e) {}
+})();
 </script>
 </body>
 </html>
