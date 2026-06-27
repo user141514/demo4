@@ -167,9 +167,39 @@ function openEdit(id){const d=dims.find(x=>x.id===id); if(!d)return; editId=id; 
 function openAdd(){editId='__new__'; document.getElementById('modalTitle').textContent='手动添加维度'; document.getElementById('editName').value=''; document.getElementById('editDef').value=''; document.getElementById('saveEditBtn').disabled=true; document.getElementById('editModal').classList.add('show'); document.getElementById('editName').oninput=function(){document.getElementById('saveEditBtn').disabled=!this.value.trim();};}
 function closeModal(){document.getElementById('editModal').classList.remove('show'); editId=null;}
 function saveEdit(){const name=document.getElementById('editName').value.trim(); if(!name)return; const def=document.getElementById('editDef').value.trim(); if(editId==='__new__'){dims.push({id:'U_'+Date.now().toString(36), nm:name, df:def, source_type:'对话归纳', source_detail:'用户手动添加', framework_dimension:'', framework_name:'', sources:{type:'对话归纳', detail:'用户手动添加'}, ok:true, manual:true});} else {const d=dims.find(x=>x.id===editId); if(d){d.nm=name; d.df=def;}} closeModal(); render();}
-function goNext(){const confirmed=dims.filter(d=>d.ok); localStorage.setItem('lm_dims', JSON.stringify(confirmed)); localStorage.setItem('lm_dims_all', JSON.stringify(dims)); window.location.href='step3.html';}
+async function goNext(){
+  const confirmed=dims.filter(d=>d.ok);
+  localStorage.setItem('lm_dims', JSON.stringify(confirmed));
+  localStorage.setItem('lm_dims_all', JSON.stringify(dims));
+  try {
+    const summary = JSON.parse(localStorage.getItem('lm_company_info') || '{}');
+    const resp = await fetch('/api/model-records', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ summary, dimensions: confirmed })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.message || '保存记录失败');
+    window.location.href='step3.html';
+  } catch (err) {
+    showToast('保存讲师记录失败：' + (err.message || '未知错误'), true);
+  }
+}
 function showToast(msg, err){const t=document.getElementById('toast'); t.textContent=msg; t.style.background=err?'#991B1B':'#1A1520'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2800);}
-init();
+async function requireStudent(){
+  try {
+    const resp = await fetch(`${API}/auth/me`);
+    const data = await resp.json();
+    if (!data.user) { window.location.href='login.html'; return false; }
+    if (data.user.role === 'instructor') { window.location.href='teacher.html'; return false; }
+    localStorage.setItem('lm_user', JSON.stringify(data.user));
+    return true;
+  } catch(e) {
+    window.location.href='login.html';
+    return false;
+  }
+}
+requireStudent().then(ok => { if (ok) init(); });
 </script>
 </body>
 </html>

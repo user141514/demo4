@@ -292,7 +292,20 @@ function saveContrast(id, key, idx, text) { const a = anchors.find(x => x.id ===
 function goNext() { localStorage.setItem('lm_anchors', JSON.stringify(anchors)); window.location.href = 'step5.html'; }
 function escHtml(s) { const div = document.createElement('div'); div.textContent = s || ''; return div.innerHTML; }
 function showToast(msg, err) { const t = document.getElementById('toast'); t.textContent = msg; t.style.background = err ? '#991B1B' : '#1A1520'; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2800); }
-init();
+async function requireStudent(){
+  try {
+    const resp = await fetch(`${API}/auth/me`);
+    const data = await resp.json();
+    if (!data.user) { window.location.href='login.html'; return false; }
+    if (data.user.role === 'instructor') { window.location.href='teacher.html'; return false; }
+    localStorage.setItem('lm_user', JSON.stringify(data.user));
+    return true;
+  } catch(e) {
+    window.location.href='login.html';
+    return false;
+  }
+}
+requireStudent().then(ok => { if (ok) init(); });
 </script>
 </body>
 </html>

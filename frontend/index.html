@@ -85,18 +85,28 @@ const API = '/api';
     startBtn.textContent = '登录后开始建模 →';
     startBtn.onclick = () => { location.href = 'login.html'; };
   };
-  const unlockUserEntry = () => {
+  const unlockStudentEntry = () => {
     stepLinks.forEach(link => { link.href = link.dataset.stepHref; });
     startBtn.textContent = '开始建模 →';
     startBtn.onclick = () => { location.href = 'step1.html'; };
+  };
+  const unlockInstructorEntry = () => {
+    stepLinks.forEach(link => { link.href = 'teacher.html'; });
+    startBtn.textContent = '进入讲师看板 →';
+    startBtn.onclick = () => { location.href = 'teacher.html'; };
   };
   try {
     const resp = await fetch(`${API}/auth/me`);
     const data = await resp.json();
     if (data.user) {
       localStorage.setItem('lm_user', JSON.stringify(data.user));
-      unlockUserEntry();
-      bar.innerHTML = `👤 ${data.user.display_name}（${data.user.email}）`;
+      if (data.user.role === 'instructor') {
+        unlockInstructorEntry();
+        bar.innerHTML = `讲师：${data.user.display_name}（${data.user.email}）`;
+      } else {
+        unlockStudentEntry();
+        bar.innerHTML = `用户：${data.user.display_name}（${data.user.email}）`;
+      }
       actions.innerHTML = `<button class="btn btn-g btn-sm" onclick="logout()">退出登录</button>`;
     } else {
       localStorage.removeItem('lm_user');

@@ -475,7 +475,21 @@ function showToast(msg, err) {
   t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-init();
+async function requireStudent(){
+  try {
+    const resp = await fetch(`${API}/auth/me`);
+    const data = await resp.json();
+    if (!data.user) { window.location.href='login.html'; return false; }
+    if (data.user.role === 'instructor') { window.location.href='teacher.html'; return false; }
+    localStorage.setItem('lm_user', JSON.stringify(data.user));
+    return true;
+  } catch(e) {
+    window.location.href='login.html';
+    return false;
+  }
+}
+
+requireStudent().then(ok => { if (ok) init(); });
 </script>
 </body>
 </html>
